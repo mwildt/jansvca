@@ -9,8 +9,9 @@
 package server
 
 import (
+	"embed"
 	"encoding/json"
-	"html"
+	"html/template"
 	"net/http"
 	"net/url"
 	"time"
@@ -18,6 +19,12 @@ import (
 	"github.com/mwildt/jansvca/idp/internal/config"
 	"github.com/mwildt/jansvca/idp/internal/token"
 )
+
+//go:embed login.html
+var loginHTML []byte
+
+// loginTmpl is the parsed login form template, parsed once at package init.
+var loginTmpl = template.Must(template.New("login").Parse(string(loginHTML)))
 
 // lastUserCookie is a long-lived, non-session cookie that only remembers the
 // last username used to sign in, so the login form can prefill it. It carries
@@ -128,67 +135,18 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, c
 
 func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, clientID, redirectURI, state, scope, errMsg, lastUser string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	esc := html.EscapeString
-	body := `<!doctype html><html lang="de"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>jansvca IdP – Anmeldung</title>
-<style>
-*{box-sizing:border-box}
-:root{
---bg:#0b1120;--surface:#111827;--surface-alt:#1f2937;--border:#273244;--border-strong:#3b4862;
---text:#e5e7eb;--muted:#94a3b8;--primary:#6366f1;--primary-hover:#4f46e5;--danger:#ef4444;
---radius:18px;--radius-sm:10px;
---font:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-}
-body{font-family:var(--font);background:var(--bg);margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;color:var(--text);
-background-image:
-radial-gradient(1200px 600px at 100% -10%,rgba(99,102,241,.14),transparent 60%),
-radial-gradient(900px 500px at -10% 0%,rgba(34,197,94,.06),transparent 55%);
-}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:36px 32px;width:100%;max-width:380px;
-box-shadow:0 20px 50px rgba(0,0,0,.55);}
-.brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:24px}
-.brand .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--primary),#8b5cf6);box-shadow:0 6px 16px rgba(99,102,241,.45)}
-.brand span{font-weight:700;font-size:1.05rem;letter-spacing:-.02em}
-h1{font-size:1.25rem;margin:0 0 6px;text-align:center;font-weight:700}
-.subtitle{color:var(--muted);font-size:.85rem;text-align:center;margin:0 0 24px}
-label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:6px;font-weight:500}
-.field{margin-bottom:18px}
-input{width:100%;padding:11px 13px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-alt);color:var(--text);font-size:.95rem;font-family:inherit;transition:border-color .14s ease,box-shadow .14s ease}
-input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(99,102,241,.18)}
-input::placeholder{color:#5b6477}
-button{width:100%;padding:12px;border:0;border-radius:var(--radius-sm);background:var(--primary);color:#fff;font-size:.95rem;font-weight:600;font-family:inherit;cursor:pointer;transition:background .14s ease,transform .06s ease;box-shadow:0 6px 16px rgba(99,102,241,.35)}
-button:hover{background:var(--primary-hover)}
-button:active{transform:translateY(1px)}
-.err{color:var(--danger);font-size:.85rem;margin-bottom:18px;text-align:center;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);padding:8px 12px;border-radius:var(--radius-sm)}
-.hint{color:var(--muted);font-size:.75rem;text-align:center;margin-top:18px}
-</style></head><body>
-<form class="card" method="post">
-<div class="brand"><span class="mark"></span><span>jansvca</span></div>
-<h1>Anmeldung</h1>
-<p class="subtitle">Melde dich über den OAuth2-Provider an.</p>`
-	if errMsg != "" {
-		body += `<div class="err">` + esc(errMsg) + `</div>`
+	data := struct {
+		ErrMsg        string
+		LastUser      string
+		FocusUser     bool
+		FocusPassword bool
+	}{
+		ErrMsg:        errMsg,
+		LastUser:      lastUser,
+		FocusUser:     lastUser == "",
+		FocusPassword: lastUser != "",
 	}
-	focusUser := lastUser == ""
-	body += `<div class="field"><label for="username">Benutzername (subject)</label>
-<input id="username" name="username" value="` + esc(lastUser) + `"` + autofocusAttr(focusUser) + ` required></div>`
-	body += `<div class="field"><label for="password">Passwort</label>
-<input id="password" name="password" type="password"` + autofocusAttr(!focusUser) + ` required></div>`
-	body += `<button type="submit">Anmelden</button>
-</form>
-<p class="hint">jansvca IdP</p>
-</body></html>`
-	_, _ = w.Write([]byte(body))
-}
-
-// autofocusAttr returns the HTML autofocus attribute when the field should
-// receive focus, otherwise an empty string. Only one field may be autofocused.
-func autofocusAttr(focus bool) string {
-	if focus {
-		return " autofocus"
-	}
-	return ""
+	_ = loginTmpl.Execute(w, data)
 }
 
 func redirectAllowed(client config.Client, uri string) bool {
