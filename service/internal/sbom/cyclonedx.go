@@ -30,8 +30,8 @@ type cycloneDXComponent struct {
 }
 
 type cycloneDXDocument struct {
-	BomFormat   string              `json:"bomFormat"`
-	SpecVersion string              `json:"specVersion"`
+	BomFormat   string               `json:"bomFormat"`
+	SpecVersion string               `json:"specVersion"`
 	Components  []cycloneDXComponent `json:"components"`
 }
 
