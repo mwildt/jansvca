@@ -141,7 +141,8 @@ jobs:
         with:
           context: .
           file: service/Dockerfile
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
+          load: ${{ github.ref != 'refs/heads/main' }}
           tags: ${{ steps.meta-service.outputs.tags }}
           labels: ${{ steps.meta-service.outputs.labels }}
 
@@ -158,7 +159,8 @@ jobs:
         with:
           context: .
           file: app/Dockerfile
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
+          load: ${{ github.ref != 'refs/heads/main' }}
           tags: ${{ steps.meta-app.outputs.tags }}
           labels: ${{ steps.meta-app.outputs.labels }}
 
@@ -175,7 +177,8 @@ jobs:
         with:
           context: .
           file: idp/Dockerfile
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
+          load: ${{ github.ref != 'refs/heads/main' }}
           tags: ${{ steps.meta-idp.outputs.tags }}
           labels: ${{ steps.meta-idp.outputs.labels }}
 
