@@ -28,18 +28,35 @@ go test ./...
 Multistage-Build (Go-Build → `FROM scratch`). Das fertige Image enthält nur
 statisches Binary + CA-Zertifikate und ist distroless.
 
+Das CI-Build veröffentlicht das Image in die **GitHub Container Registry**
+(`ghcr.io/mwildt/jansvca`), nicht nach Docker Hub.
+
+Lokal bauen:
+
 ```bash
 docker build -t jansvca .
+```
 
-# ohne OAuth2 (API läuft ohne Auth):
-docker run --rm -p 8080:8080 -v jansvca-data:/data jansvca
+Image von GHCR ziehen (nach CI-Build auf `main`):
 
-# mit OAuth2-Introspection:
+```bash
+docker pull ghcr.io/mwildt/jansvca:latest
+```
+
+Ausführen — ohne OAuth2 (API läuft ohne Auth):
+
+```bash
+docker run --rm -p 8080:8080 -v jansvca-data:/data ghcr.io/mwildt/jansvca:latest
+```
+
+Ausführen — mit OAuth2-Introspection:
+
+```bash
 docker run --rm -p 8080:8080 -v jansvca-data:/data \
   -e JANSVCA_OAUTH2_INTROSPECTION_URL=https://provider/oauth2/introspect \
   -e JANSVCA_OAUTH2_CLIENT_ID=... \
   -e JANSVCA_OAUTH2_CLIENT_SECRET=... \
-  jansvca
+  ghcr.io/mwildt/jansvca:latest
 ```
 
 ## Ausführen
