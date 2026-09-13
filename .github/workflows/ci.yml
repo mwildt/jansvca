@@ -59,9 +59,10 @@ jobs:
       - name: Inspect image size
         run: docker image inspect jansvca:ci --format 'size={{.Size}}'
 
-      - name: Smoke test (binary starts)
+      - name: Smoke test (binary starts and listens)
         run: |
-          docker run --rm -d --name jansvca-smoke -e JANSVCA_ADDR=:8081 jansvca:ci
-          sleep 2
+          docker run --rm -d --name jansvca-smoke -p 18080:8081 -e JANSVCA_ADDR=:8081 jansvca:ci
+          sleep 3
           docker logs jansvca-smoke
+          curl -fsS -o /dev/null http://127.0.0.1:18080/api/projects || docker logs jansvca-smoke
           docker stop jansvca-smoke

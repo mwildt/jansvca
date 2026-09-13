@@ -21,9 +21,6 @@ ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath -ldflags "-s -w" -o /out/jansvca ./cmd/jansvca
 
-# Verify it runs (smoke check during build).
-RUN /out/jansvca -h 2>/dev/null || true
-
 # ---- Runtime stage ----------------------------------------------------------
 # From scratch for a minimal, distroless image. The binary is fully static,
 # so no libc or base filesystem is required.
