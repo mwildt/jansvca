@@ -10,16 +10,16 @@ import (
 
 // ProjectView is the read-model representation of a project (not deleted).
 type ProjectView struct {
-	ID          string
-	Name        string
-	Description string
-	Components  []ComponentView
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Components  []ComponentView `json:"components"`
 }
 
 // ComponentView is the read-model representation of a component.
 type ComponentView struct {
-	Component string
-	Version   string
+	Component string `json:"component"`
+	Version   string `json:"version"`
 }
 
 // ProjectProjection builds a read model of all non-deleted projects and their

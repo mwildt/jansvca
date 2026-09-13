@@ -13,28 +13,28 @@ import (
 
 // VulnerabilityView is the read-model representation of a vulnerability.
 type VulnerabilityView struct {
-	ID          string
-	Identifier  string
-	Title       string
-	Description string
-	CVSS        float64
-	Affected    []AffectedRangeView
+	ID          string              `json:"id"`
+	Identifier  string              `json:"identifier"`
+	Title       string              `json:"title"`
+	Description string              `json:"description"`
+	CVSS        float64             `json:"cvss"`
+	Affected    []AffectedRangeView `json:"affected"`
 }
 
 // AffectedRangeView is the read-model representation of an affected range.
 type AffectedRangeView struct {
-	Component    string
-	VersionRange string
+	Component    string `json:"component"`
+	VersionRange string `json:"version_range"`
 }
 
 // Match is a single vulnerability hit for a project component.
 type Match struct {
-	ProjectID               string
-	Component               string
-	Version                 string
-	VulnerabilityID         string
-	VulnerabilityIdentifier string
-	CVSS                    float64
+	ProjectID               string  `json:"project_id"`
+	Component               string  `json:"component"`
+	Version                 string  `json:"version"`
+	VulnerabilityID         string  `json:"vulnerability_id"`
+	VulnerabilityIdentifier string  `json:"vulnerability_identifier"`
+	CVSS                    float64 `json:"cvss"`
 }
 
 // MatchingProjection builds the read model for vulnerabilities and project
