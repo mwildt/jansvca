@@ -18,19 +18,21 @@ export class JvToast extends LitElement {
     }
     .toast {
       pointer-events: auto;
-      background: var(--jv-text);
-      color: #fff;
+      background: var(--jv-surface);
+      color: var(--jv-text);
+      border: 1px solid var(--jv-border-strong);
       padding: var(--jv-md) var(--jv-lg);
-      border-radius: var(--jv-sm);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-      font-size: 0.9rem;
+      border-radius: var(--jv-md);
+      box-shadow: var(--jv-shadow-lg);
+      font-size: 0.88rem;
       max-width: 360px;
+      border-left: 3px solid var(--jv-primary);
     }
     .toast.error {
-      background: var(--jv-danger);
+      border-left-color: var(--jv-danger);
     }
     .toast.success {
-      background: var(--jv-success);
+      border-left-color: var(--jv-success);
     }
   `;
 
