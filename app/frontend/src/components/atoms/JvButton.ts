@@ -13,13 +13,13 @@ export class JvButton extends LitElement {
       align-items: center;
       justify-content: center;
       gap: var(--jv-sm);
-      padding: 9px var(--jv-lg);
-      border-radius: var(--jv-sm);
+      padding: 11px var(--jv-xl);
+      border-radius: var(--jv-radius-sm);
       border: 1px solid var(--jv-border);
       background: var(--jv-surface-alt);
       color: var(--jv-text);
-      font-size: 0.88rem;
-      font-weight: 500;
+      font-size: 0.92rem;
+      font-weight: 600;
       font-family: inherit;
       cursor: pointer;
       transition: background 0.14s ease, border-color 0.14s ease, transform 0.06s ease, box-shadow 0.14s ease;
@@ -40,6 +40,7 @@ export class JvButton extends LitElement {
     }
     :host([variant="primary"]) button:hover {
       background: var(--jv-primary-hover);
+      box-shadow: 0 8px 20px rgba(99, 102, 241, 0.42);
     }
     :host([variant="danger"]) button {
       background: var(--jv-danger-soft);
@@ -49,6 +50,7 @@ export class JvButton extends LitElement {
     :host([variant="danger"]) button:hover {
       background: var(--jv-danger);
       color: #fff;
+      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.3);
     }
     :host([variant="ghost"]) button {
       background: transparent;

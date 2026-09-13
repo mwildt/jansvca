@@ -58,7 +58,7 @@ const tokenVars = `
     --jv-danger-soft: rgba(239, 68, 68, 0.18);
     --jv-success: #22c55e;
     --jv-warn: #f59e0b;
-    --jv-radius-sm: 8px;
+    --jv-radius-sm: 10px;
     --jv-radius-md: 12px;
     --jv-radius-lg: 18px;
     --jv-space-xs: 4px;
