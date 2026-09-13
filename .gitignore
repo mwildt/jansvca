@@ -1,4 +1,17 @@
-/data/
+# Build artifacts
+/data
 *.wal
 *.test
-/bin/
+bin/
+
+# Frontend
+app/dist/
+app/frontend/node_modules/
+
+# Go build cache / vendor (we don't vendor)
+service/vendor/
+app/vendor/
+
+# editor
+.vscode/
+.idea/

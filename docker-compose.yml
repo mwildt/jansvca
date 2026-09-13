@@ -1,0 +1,57 @@
+# docker-compose for the two-container setup:
+#   service  – backend REST API (hexagonal Go, event sourcing)
+#   app      – BFF (Lit SPA + session + gateway), proxies /api/* to the service
+#
+# Build both images from the repo root:
+#   docker compose build
+#   docker compose up
+#
+# The app container reaches the service over the compose network as
+# http://service:8080 (the service's JANSVCA_ADDR default).
+
+services:
+  service:
+    build:
+      context: .
+      dockerfile: service/Dockerfile
+    image: ghcr.io/mwildt/jansvca-service:latest
+    environment:
+      JANSVCA_ADDR: ":8080"
+      JANSVCA_DATA_DIR: /data
+      # Optional OAuth2 introspection on the backend itself.
+      # JANSVCA_OAUTH2_INTROSPECTION_URL: https://provider/introspect
+      # JANSVCA_OAUTH2_CLIENT_ID: ...
+      # JANSVCA_OAUTH2_CLIENT_SECRET: ...
+    volumes:
+      - service-data:/data
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    image: ghcr.io/mwildt/jansvca-app:latest
+    environment:
+      JANSVCA_ADDR: ":8080"
+      JANSVCA_BACKEND_URL: http://service:8080
+      JANSVCA_SPA_DIR: /app/dist
+      # OAuth2 Authorization-Code-Flow in the BFF (optional).
+      # JANSVCA_OAUTH2_AUTHORIZATION_URL: https://provider/authorize
+      # JANSVCA_OAUTH2_TOKEN_URL: https://provider/token
+      # JANSVCA_OAUTH2_INTROSPECTION_URL: https://provider/introspect
+      # JANSVCA_OAUTH2_CLIENT_ID: ...
+      # JANSVCA_OAUTH2_CLIENT_SECRET: ...
+      # JANSVCA_OAUTH2_REDIRECT_URL: http://localhost:8080/api/auth/callback
+      # JANSVCA_SECURE_COOKIES: "true"
+      # Gateway upstreams (comma-separated, optional /strip suffix):
+      # JANSVCA_GATEWAY_UPSTREAMS: "/proxy/svc=https://api.example.com/strip"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - service
+    restart: unless-stopped
+
+volumes:
+  service-data:

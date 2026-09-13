@@ -7,25 +7,24 @@ on:
     branches: [main]
 
 jobs:
-  build-test:
-    name: Build & Test
+  service:
+    name: Service (Go)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: service
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
-
+          cache-dependency-path: service/go.mod
       - name: Download modules
         run: go mod download
-
       - name: Build
         run: go build ./...
-
       - name: Vet
         run: go vet ./...
-
       - name: gofmt
         run: |
           out="$(gofmt -l .)"
@@ -34,23 +33,65 @@ jobs:
             echo "$out"
             exit 1
           fi
-
       - name: Test
         run: go test ./...
 
-  docker:
-    name: Docker image
+  app:
+    name: App (Go + Frontend)
     runs-on: ubuntu-latest
-    needs: build-test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: app/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/frontend/package.json
+      - name: Go download modules
+        working-directory: app
+        run: go mod download
+      - name: Frontend install
+        working-directory: app/frontend
+        run: npm ci --no-audit --no-fund
+      - name: Frontend typecheck
+        working-directory: app/frontend
+        run: npm run typecheck
+      - name: Frontend build
+        working-directory: app/frontend
+        run: npm run build
+      - name: Go build
+        working-directory: app
+        run: go build ./...
+      - name: Go vet
+        working-directory: app
+        run: go vet ./...
+      - name: Go gofmt
+        working-directory: app
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "gofmt would reformat:"
+            echo "$out"
+            exit 1
+          fi
+      - name: Go test
+        working-directory: app
+        run: go test ./...
+
+  docker:
+    name: Docker images
+    runs-on: ubuntu-latest
+    needs: [service, app]
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v7
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -58,29 +99,60 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Derive image tags
-        id: meta
+      - name: Derive service image tags
+        id: meta-service
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/jansvca
+          images: ghcr.io/${{ github.repository_owner }}/jansvca-service
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
-
-      - name: Build and push image
+      - name: Build and push service image
         uses: docker/build-push-action@v7
         with:
           context: .
+          file: service/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          load: false
+          tags: ${{ steps.meta-service.outputs.tags }}
+          labels: ${{ steps.meta-service.outputs.labels }}
 
-      - name: Smoke test (binary starts and listens)
+      - name: Derive app image tags
+        id: meta-app
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/jansvca-app
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+      - name: Build and push app image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: app/Dockerfile
+          push: true
+          tags: ${{ steps.meta-app.outputs.tags }}
+          labels: ${{ steps.meta-app.outputs.labels }}
+
+      - name: Smoke test (service starts and serves /api/projects)
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/jansvca:sha-$(git rev-parse --short HEAD)"
-          docker run --rm -d --name jansvca-smoke -p 18080:8081 -e JANSVCA_ADDR=:8081 "$IMAGE"
+          IMAGE="ghcr.io/${{ github.repository_owner }}/jansvca-service:sha-$(git rev-parse --short HEAD)"
+          docker run --rm -d --name service-smoke -p 18080:8080 "$IMAGE"
           sleep 3
-          docker logs jansvca-smoke
-          curl -fsS -o /dev/null http://127.0.0.1:18080/api/projects || docker logs jansvca-smoke
-          docker stop jansvca-smoke
+          docker logs service-smoke
+          curl -fsS http://127.0.0.1:18080/api/projects || docker logs service-smoke
+          docker stop service-smoke
+
+      - name: Smoke test (app serves SPA and proxies /api to service)
+        run: |
+          SERVICE="ghcr.io/${{ github.repository_owner }}/jansvca-service:sha-$(git rev-parse --short HEAD)"
+          APP="ghcr.io/${{ github.repository_owner }}/jansvca-app:sha-$(git rev-parse --short HEAD)"
+          docker network create jansvca-smoke
+          docker run --rm -d --name service-smoke2 --network jansvca-smoke "$SERVICE"
+          docker run --rm -d --name app-smoke --network jansvca-smoke -p 18081:8080 \
+            -e JANSVCA_BACKEND_URL=http://service-smoke2:8080 "$APP"
+          sleep 4
+          docker logs app-smoke
+          curl -fsS http://127.0.0.1:18081/ || docker logs app-smoke
+          curl -fsS http://127.0.0.1:18081/api/projects || docker logs app-smoke
+          docker stop app-smoke service-smoke2
+          docker network rm jansvca-smoke
