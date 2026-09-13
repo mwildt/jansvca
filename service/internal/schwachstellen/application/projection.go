@@ -160,9 +160,9 @@ func (m *MatchingProjection) Matches(projectID string) []Match {
 	defer m.mu.Unlock()
 	comps, ok := m.components[projectID]
 	if !ok {
-		return nil
+		return []Match{}
 	}
-	var out []Match
+	out := make([]Match, 0)
 	for component, version := range comps {
 		ver, err := semver.Parse(version)
 		if err != nil {
