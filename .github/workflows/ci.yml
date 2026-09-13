@@ -55,11 +55,13 @@ jobs:
           push: false
           tags: jansvca:ci
           load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Inspect image size
         run: docker image inspect jansvca:ci --format 'size={{.Size}}'
 
-      - name: Smoke test (binary runs)
-        run: docker run --rm -e JANSVCA_ADDR=:8081 jansvca:ci &
+      - name: Smoke test (binary starts)
+        run: |
+          docker run --rm -d --name jansvca-smoke -e JANSVCA_ADDR=:8081 jansvca:ci
+          sleep 2
+          docker logs jansvca-smoke
+          docker stop jansvca-smoke
