@@ -48,6 +48,7 @@ func (p *ProjectProjection) Apply(env eventstore.Envelope) {
 			ID:          e.ProjectID,
 			Name:        e.Name,
 			Description: e.Description,
+			Components:  []ComponentView{},
 		}
 	case domain.EventProjectRenamed:
 		var e domain.ProjectRenamed
