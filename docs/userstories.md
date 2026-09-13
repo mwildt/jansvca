@@ -32,17 +32,23 @@ Rollen:
 
 - **Sprache/Runtime:** Go
 - **Architektur:** Event Sourcing – Zustand wird aus Ereignissen (Events) rekonstruiert; Commands erzeugen Events, Read Models werden aus den Events projiziert
-- **Eventstores:** Pro Modul (Bounded Context) ein eigener Eventstore, z. B. separate Stores für Projekte, Komponenten, Schwachstellen, Matching
-- **Authentifizierung:** Ja – Nutzer müssen sich authentifizieren (z. B. OIDC/OAuth2 oder lokaler Login)
-- **Autorisierung:** Rollen- und Rechtekonzept (RBAC) – z. B. Rollen `Administrator`, `Nutzer` mit abgestuften Rechten pro Modul
+- **Module:** Zwei Fachmodule + ein Infrastrukturmodul:
+  - `Projekte` – Projekte und deren Komponenten/Koordinaten
+  - `Schwachstellen` – Schwachstellen und deren Version-Range-Zuordnungen inkl. Matching
+  - `Infrastruktur` – Querschnitt: selbstgebauter Eventstore (WAL), Authentifizierung/Autorisierung, semver-Prüfung
+- **Eventstores:** Pro Fachmodul ein eigener Eventstore; der Eventstore wird selbst implementiert (Write-Ahead-Log, append-only) und im Infrastruktur-Modul bereitgestellt
+- **Authentifizierung:** OAuth2
+- **Autorisierung:** Erst eine Rolle (`Administrator`) mit allen Rechten; feingranulares RBAC später
+- **Löschen:** Soft-Delete – Entitäten werden als gelöscht markiert, nicht physisch entfernt
 - **Versionierung:** Semantic Versioning (semver) als Default – Komponenten-Versionen und Version Ranges werden nach semver interpretiert
 - **Version-Range-Syntax:** semver-kompatibel (z. B. `>=1.0.0 <2.0.0`, `^1.2.0`)
+- **Koordinatenformat:** Generisch (Bezeichner + Version), zusätzlich PURL (`pkg:gem/rails@7.0.0`) als unterstütztes Format
 
 ---
 
 ## Epics / Themenbereiche
 
-- `EP-00` – Architektur & Authentifizierung (Event-Sourcing-Grundgerüst, Module/Eventstores, AuthN/AuthZ, Rollen/Rechte)
+- `EP-00` – Infrastruktur (selbstgebauter WAL-Eventstore, OAuth2-Auth, Rollen/Rechte, semver-Prüfung)
 - `EP-01` – Projektverwaltung (Projekte anlegen, anzeigen, bearbeiten)
 - `EP-02` – Komponenten & Koordinaten (Komponenten mit Version zu Projekten erfassen)
 - `EP-03` – Schwachstellenverwaltung (Schwachstellen anlegen, erfassen, was sie betreffen)
@@ -112,7 +118,7 @@ Rollen:
 - [ ] Löschen mit Bestätigung
 - [ ] Löschen entfernt verwaiste Zuordnungen sauber
 
-**Notizen:** Klären: hartes vs. soft-löschen. _
+**Notizen:** Löschen als Soft-Delete (Entität wird als gelöscht markiert). _
 
 ---
 
@@ -130,11 +136,11 @@ Rollen:
 **Akzeptanzkriterien:**
 
 - [ ] Komponente kann innerhalb eines Projekts angelegt werden
-- [ ] Koordinaten mindestens: Komponenten-Bezeichner (z. B. `pkg:name`) und konkrete Version
+- [ ] Koordinaten: generisches Format (Bezeichner + konkrete Version); PURL (`pkg:gem/rails@7.0.0`) wird als Format unterstützt
 - [ ] Komponente ist in der Projekt-Detailansicht sichtbar
 - [ ] Mehrere Komponenten pro Projekt möglich
 
-**Notizen:** Koordinatenformat offen – z. B. PURL (`pkg:gem/rails@7.0.0`). _
+**Notizen:** Koordinatenformat generisch, PURL-Unterstützung. _
 
 ---
 
@@ -152,7 +158,7 @@ Rollen:
 **Akzeptanzkriterien:**
 
 - [ ] Version/Bezeichner einer Komponente editierbar
-- [ ] Komponente aus Projekt entfernbar
+- [ ] Komponente aus Projekt entfernbar (Soft-Delete)
 - [ ] Änderungen in Projekt-Detailansicht sichtbar
 
 **Notizen:** _
@@ -277,11 +283,11 @@ Rollen:
 **Akzeptanzkriterien:**
 
 - [ ] Login erforderlich vor Zugriff auf beliebige Funktionalität
-- [ ] Authentifizierung erfolgt (z. B. OIDC/OAuth2 oder lokaler Login)
-- [ ] Ungültige Anmeldedaten werden abgewiesen
-- [ ] Sitzung/Token-basierter Zugriff auf alle Modul-APIs
+- [ ] Authentifizierung erfolgt über OAuth2 (Authorization-Server/Provider)
+- [ ] Ungültige Anmeldedaten/Token werden abgewiesen
+- [ ] Token-basierter Zugriff auf alle Modul-APIs
 
-**Notizen:** Auth-Mechanismus festlegen. _
+**Notizen:** OAuth2-Provider festlegen. _
 
 ---
 
@@ -294,16 +300,16 @@ Rollen:
 | Status       | Offen                                           |
 | Aufwand      | _TBD_                                           |
 
-**Story:** Als `Administrator` möchte ich Rollen und Rechte verwalten, damit Nutzer nur die für ihre Rolle freigegebenen Aktionen ausführen können.
+**Story:** Als `Entwickler` möchte ich erst nur eine Rolle (`Administrator`) mit allen Rechten vorsehen, damit der Erststart ohne komplexes Rechtemanagement auskommt, das Modell aber später erweiterbar bleibt.
 
 **Akzeptanzkriterien:**
 
-- [ ] Mindestens Rollen `Administrator` und `Nutzer`
-- [ ] Rechte sind pro Modul/Aktion modellierbar (z. B. lesen, anlegen, ändern, löschen)
-- [ ] Aktionen ohne Berechtigung werden abgewiesen (403)
-- [ ] Rollenzuweisung für Nutzer möglich
+- [ ] Eine Rolle `Administrator` mit allen Rechten
+- [ ] Jeder authentifizierte Nutzer hat die Administrator-Rolle
+- [ ] Aktionen ohne Authentifizierung werden abgewiesen
+- [ ] RBAC ist so modelliert, dass später weitere Rollen/Rechte ergänzt werden können
 
-**Notizen:** Rechte-Matrix pro Modul ergänzen. _
+**Notizen:** Feingranulares RBAC später. _
 
 ---
 
@@ -316,17 +322,17 @@ Rollen:
 | Status       | Offen                                           |
 | Aufwand      | _TBD_                                           |
 
-**Story:** Als `Entwickler` möchte ich ein Event-Sourcing-Grundgerüst mit einem Eventstore pro Modul, damit jeder Bounded Context (Projekte, Komponenten, Schwachstellen, Matching) seine Events unabhängig persistieren und projizieren kann.
+**Story:** Als `Entwickler` möchte ich einen selbstgebauten Eventstore mit Write-Ahead-Log (WAL) im Infrastruktur-Modul, damit die beiden Fachmodule `Projekte` und `Schwachstellen` ihre Events unabhängig persistieren und projizieren können.
 
 **Akzeptanzkriterien:**
 
-- [ ] Eventstore-Abstraktion implementiert (append-only, Event-Reihenfolge, IDs)
-- [ ] Pro Modul ein eigener Eventstore
+- [ ] Eventstore-Abstraktion im Infrastruktur-Modul implementiert (append-only, WAL, Event-Reihenfolge, IDs)
+- [ ] Pro Fachmodul ein eigener Eventstore (Projekte, Schwachstellen)
 - [ ] Aggregate rekonstruieren Zustand aus Events (Replay)
 - [ ] Commands validieren und erzeugen Events
 - [ ] Read Models werden aus Events projiziert
 
-**Notizen:** Basis für alle weiteren Module. _
+**Notizen:** WAL selbst implementiert, keine externe ES-Library. _
 
 ---
 
@@ -375,12 +381,15 @@ Rollen:
 
 ## Offene Fragen
 
-- [ ] Koordinatenformat für Komponenten festlegen (z. B. PURL `pkg:gem/rails@7.0.0`)?
-- [ ] Auth-Mechanismus festlegen: OIDC/OAuth2-Provider vs. lokaler Login?
-- [ ] Konkrete Rechte-Matrix pro Modul/Rolle definieren?
-- [ ] Eventstore-Technologie/Storage festlegen (z. B. Postgres, dediziertes ES)?
-- [ ] Modulgrenzen (Bounded Contexts) final festlegen?
-- [ ] Hartes oder soft-Löschen von Projekten/Komponenten/Schwachstellen?
+- [x] Koordinatenformat festgelegt: generisch (Bezeichner + Version), PURL unterstützt
+- [x] Auth: OAuth2
+- [x] Rollen: erst eine `Administrator`-Rolle mit allen Rechten
+- [x] Eventstore: selbstgebaut mit WAL im Infrastruktur-Modul
+- [x] Module: `Projekte`, `Schwachstellen` (+ `Infrastruktur` als Querschnitt)
+- [x] Löschen: Soft-Delete
+- [ ] OAuth2-Provider konkret festlegen
+- [ ] Soft-Delete: Anzeige/Filterung gelöschter Entitäten in UI/API festlegen
+- [ ] Schweregrad-Darstellung: CVSS-Score vs. Kategorien (Kritisch/Hoch/Mittel/Niedrig)
 
 ---
 
@@ -390,3 +399,4 @@ Rollen:
 |-------------|---------|------------------------------------------------|
 | 2025-09-13  | 0.1     | Initiale Userstories-Liste                     |
 | 2025-09-13  | 0.3     | Stack: Go + Event Sourcing, Auth/Rollen, semver  |
+| 2025-09-13  | 0.4     | Koordinaten generisch+PURL, OAuth2, eine Rolle, Soft-Delete, WAL-Eventstore, 2 Module  |
