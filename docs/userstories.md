@@ -28,8 +28,21 @@ Rollen:
 
 ---
 
+## Technische Rahmenentscheidungen
+
+- **Sprache/Runtime:** Go
+- **Architektur:** Event Sourcing – Zustand wird aus Ereignissen (Events) rekonstruiert; Commands erzeugen Events, Read Models werden aus den Events projiziert
+- **Eventstores:** Pro Modul (Bounded Context) ein eigener Eventstore, z. B. separate Stores für Projekte, Komponenten, Schwachstellen, Matching
+- **Authentifizierung:** Ja – Nutzer müssen sich authentifizieren (z. B. OIDC/OAuth2 oder lokaler Login)
+- **Autorisierung:** Rollen- und Rechtekonzept (RBAC) – z. B. Rollen `Administrator`, `Nutzer` mit abgestuften Rechten pro Modul
+- **Versionierung:** Semantic Versioning (semver) als Default – Komponenten-Versionen und Version Ranges werden nach semver interpretiert
+- **Version-Range-Syntax:** semver-kompatibel (z. B. `>=1.0.0 <2.0.0`, `^1.2.0`)
+
+---
+
 ## Epics / Themenbereiche
 
+- `EP-00` – Architektur & Authentifizierung (Event-Sourcing-Grundgerüst, Module/Eventstores, AuthN/AuthZ, Rollen/Rechte)
 - `EP-01` – Projektverwaltung (Projekte anlegen, anzeigen, bearbeiten)
 - `EP-02` – Komponenten & Koordinaten (Komponenten mit Version zu Projekten erfassen)
 - `EP-03` – Schwachstellenverwaltung (Schwachstellen anlegen, erfassen, was sie betreffen)
@@ -250,6 +263,95 @@ Rollen:
 
 ---
 
+### US-011 – Authentifizierung
+
+| Feld         | Wert                                            |
+|--------------|-------------------------------------------------|
+| Epic         | `EP-00`                                         |
+| Priorität    | MUST                                            |
+| Status       | Offen                                           |
+| Aufwand      | _TBD_                                           |
+
+**Story:** Als `Nutzer` möchte ich mich authentifizieren (Login), damit nur berechtigte Personen auf die App und deren Daten zugreifen können.
+
+**Akzeptanzkriterien:**
+
+- [ ] Login erforderlich vor Zugriff auf beliebige Funktionalität
+- [ ] Authentifizierung erfolgt (z. B. OIDC/OAuth2 oder lokaler Login)
+- [ ] Ungültige Anmeldedaten werden abgewiesen
+- [ ] Sitzung/Token-basierter Zugriff auf alle Modul-APIs
+
+**Notizen:** Auth-Mechanismus festlegen. _
+
+---
+
+### US-012 – Rollen und Rechte (RBAC)
+
+| Feld         | Wert                                            |
+--------------|-------------------------------------------------|
+| Epic         | `EP-00`                                         |
+| Priorität    | MUST                                            |
+| Status       | Offen                                           |
+| Aufwand      | _TBD_                                           |
+
+**Story:** Als `Administrator` möchte ich Rollen und Rechte verwalten, damit Nutzer nur die für ihre Rolle freigegebenen Aktionen ausführen können.
+
+**Akzeptanzkriterien:**
+
+- [ ] Mindestens Rollen `Administrator` und `Nutzer`
+- [ ] Rechte sind pro Modul/Aktion modellierbar (z. B. lesen, anlegen, ändern, löschen)
+- [ ] Aktionen ohne Berechtigung werden abgewiesen (403)
+- [ ] Rollenzuweisung für Nutzer möglich
+
+**Notizen:** Rechte-Matrix pro Modul ergänzen. _
+
+---
+
+### US-013 – Event-Sourcing-Grundgerüst pro Modul
+
+| Feld         | Wert                                            |
+|--------------|-------------------------------------------------|
+| Epic         | `EP-00`                                         |
+| Priorität    | MUST                                            |
+| Status       | Offen                                           |
+| Aufwand      | _TBD_                                           |
+
+**Story:** Als `Entwickler` möchte ich ein Event-Sourcing-Grundgerüst mit einem Eventstore pro Modul, damit jeder Bounded Context (Projekte, Komponenten, Schwachstellen, Matching) seine Events unabhängig persistieren und projizieren kann.
+
+**Akzeptanzkriterien:**
+
+- [ ] Eventstore-Abstraktion implementiert (append-only, Event-Reihenfolge, IDs)
+- [ ] Pro Modul ein eigener Eventstore
+- [ ] Aggregate rekonstruieren Zustand aus Events (Replay)
+- [ ] Commands validieren und erzeugen Events
+- [ ] Read Models werden aus Events projiziert
+
+**Notizen:** Basis für alle weiteren Module. _
+
+---
+
+### US-014 – semver-Vergleich und Version-Range-Prüfung
+
+| Feld         | Wert                                            |
+|--------------|-------------------------------------------------|
+| Epic         | `EP-04`                                         |
+| Priorität    | MUST                                            |
+| Status       | Offen                                           |
+| Aufwand      | _TBD_                                           |
+
+**Story:** Als `Entwickler` möchte ich eine semver-basierte Prüfung, ob eine konkrete Version in einem Version Range liegt, damit das Matching verlässlich arbeitet.
+
+**Akzeptanzkriterien:**
+
+- [ ] Komponenten-Versionen werden nach semver interpretiert
+- [ ] Version Ranges nach semver-Syntax (z. B. `>=1.0.0 <2.0.0`, `^1.2.0`)
+- [ ] Funktion prüft: liegt Version X im Range R?
+- [ ] Ungültige Versionen/Ranges werden erkannt
+
+**Notizen:** Basis für US-009. _
+
+---
+
 ## Prioritäten-Matrix
 
 | ID      | Titel                                              | Epic    | Priorität | Status |
@@ -264,16 +366,20 @@ Rollen:
 | US-008  | Schwachstelle Komponente in Version Range zuordnen | EP-04   | MUST      | Offen  |
 | US-009  | Treffer pro Projekt ermitteln (Matching)           | EP-04   | MUST      | Offen  |
 | US-010  | Schwachstellen nach Projekt filtern/auswerten      | EP-04   | SHOULD    | Offen  |
+| US-011  | Authentifizierung                                  | EP-00   | MUST      | Offen  |
+| US-012  | Rollen und Rechte (RBAC)                          | EP-00   | MUST      | Offen  |
+| US-013  | Event-Sourcing-Grundgerüst pro Modul              | EP-00   | MUST      | Offen  |
+| US-014  | semver-Vergleich und Version-Range-Prüfung        | EP-04   | MUST      | Offen  |
 
 ---
 
 ## Offene Fragen
 
 - [ ] Koordinatenformat für Komponenten festlegen (z. B. PURL `pkg:gem/rails@7.0.0`)?
-- [ ] Syntax für Version Ranges festlegen (semver, maven, eigenes Format)?
-- [ ] Schweregrad-Darstellung: CVSS-Score vs. Kategorien (Kritisch/Hoch/Mittel/Niedrig)?
-- [ ] Ist Authentifizierung/Mehrnutzerbetrieb für das MVP nötig?
-- [ ] Technologie-Stack und Hosting festlegen?
+- [ ] Auth-Mechanismus festlegen: OIDC/OAuth2-Provider vs. lokaler Login?
+- [ ] Konkrete Rechte-Matrix pro Modul/Rolle definieren?
+- [ ] Eventstore-Technologie/Storage festlegen (z. B. Postgres, dediziertes ES)?
+- [ ] Modulgrenzen (Bounded Contexts) final festlegen?
 - [ ] Hartes oder soft-Löschen von Projekten/Komponenten/Schwachstellen?
 
 ---
@@ -283,4 +389,4 @@ Rollen:
 | Datum       | Version | Änderung                                       |
 |-------------|---------|------------------------------------------------|
 | 2025-09-13  | 0.1     | Initiale Userstories-Liste                     |
-| 2025-09-13  | 0.2     | Konkrete Epics/Stories für Schwachstellen-App  |
+| 2025-09-13  | 0.3     | Stack: Go + Event Sourcing, Auth/Rollen, semver  |
