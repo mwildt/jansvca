@@ -3,7 +3,11 @@ import { customElement, state } from "lit/decorators.js";
 import { api } from "../../shared/api/client";
 import { navigate } from "../../shared/router";
 import { toast } from "../molecules/JvToast";
+import "../molecules/JvBreadcrumb";
+import "../molecules/JvPageHeader";
+import "../molecules/JvButtonRow";
 import "../atoms/JvButton";
+import "../atoms/JvCard";
 import "../atoms/JvInput";
 import "../atoms/JvTextarea";
 
@@ -14,48 +18,13 @@ export class JvProjectNew extends LitElement {
     :host {
       display: block;
     }
-    .crumb a {
-      color: var(--jv-text-muted);
-      text-decoration: none;
-      font-size: 0.85rem;
-    }
-    .crumb a:hover {
-      color: var(--jv-text);
-    }
-    .head {
-      margin: var(--jv-md) 0 var(--jv-2xl);
-    }
-    .head h1 {
-      margin: 0;
-      font-size: 1.6rem;
-      letter-spacing: -0.02em;
-    }
-    .head p {
-      margin: var(--jv-xs) 0 0;
-      color: var(--jv-text-muted);
-      font-size: 0.9rem;
-      max-width: 60ch;
-    }
     .card {
       max-width: 620px;
-      background: var(--jv-surface);
-      border: 1px solid var(--jv-border);
-      border-radius: var(--jv-lg);
-      padding: var(--jv-2xl);
-      box-shadow: var(--jv-shadow-md);
-    }
-    .field {
-      margin-bottom: var(--jv-lg);
     }
     .hint {
       font-size: 0.78rem;
       color: var(--jv-text-muted);
       margin-top: var(--jv-xs);
-    }
-    .actions {
-      display: flex;
-      gap: var(--jv-sm);
-      margin-top: var(--jv-xl);
     }
   `;
 
@@ -85,14 +54,14 @@ export class JvProjectNew extends LitElement {
 
   render() {
     return html`
-      <div class="crumb"><a href="/projects" data-link>\u2190 Projekte</a></div>
-      <div class="head">
-        <h1>Neues Projekt</h1>
-        <p>Lege ein Projekt an und erg\u00e4nze anschlie\u00dfend Komponenten \u00fcber die Detailseite oder per SBOM-Import.</p>
-      </div>
+      <jv-breadcrumb href="/projects">\u2190 Projekte</jv-breadcrumb>
+      <jv-page-header
+        heading="Neues Projekt"
+        subtitle="Lege ein Projekt an und erg\u00e4nze anschlie\u00dfend Komponenten \u00fcber die Detailseite oder per SBOM-Import."
+      ></jv-page-header>
 
-      <div class="card">
-        <div class="field">
+      <jv-card class="card">
+        <div class="hint" style="margin-bottom:var(--jv-lg);">
           <jv-input
             label="ID"
             name="id"
@@ -102,16 +71,14 @@ export class JvProjectNew extends LitElement {
           ></jv-input>
           <div class="hint">Eindeutiger, URL-tauglicher Bezeichner (keine Leerzeichen).</div>
         </div>
-        <div class="field">
-          <jv-input
-            label="Name"
-            name="name"
-            placeholder="Projektname"
-            .value=${this.form.name}
-            @change=${(e: CustomEvent<{ value: string }>) => (this.form.name = e.detail.value)}
-          ></jv-input>
-        </div>
-        <div class="field">
+        <jv-input
+          label="Name"
+          name="name"
+          placeholder="Projektname"
+          .value=${this.form.name}
+          @change=${(e: CustomEvent<{ value: string }>) => (this.form.name = e.detail.value)}
+        ></jv-input>
+        <div style="margin-top:var(--jv-lg);">
           <jv-textarea
             label="Beschreibung"
             name="description"
@@ -120,13 +87,13 @@ export class JvProjectNew extends LitElement {
             @change=${(e: CustomEvent<{ value: string }>) => (this.form.description = e.detail.value)}
           ></jv-textarea>
         </div>
-        <div class="actions">
+        <jv-button-row style="margin-top:var(--jv-xl);">
           <jv-button variant="primary" ?disabled=${this.submitting} @click=${this.#submit}>
             ${this.submitting ? "Wird angelegt\u2026" : "Projekt anlegen"}
           </jv-button>
           <jv-button @click=${() => navigate("/projects")}>Abbrechen</jv-button>
-        </div>
-      </div>
+        </jv-button-row>
+      </jv-card>
     `;
   }
 }

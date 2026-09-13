@@ -9,6 +9,16 @@ export class JvFormField extends LitElement {
     :host {
       display: block;
       margin-bottom: var(--jv-lg);
+      font-family: var(--jv-font-sans);
+      color: var(--jv-text);
+    }
+    .label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--jv-text-muted);
+      margin-bottom: var(--jv-xs);
+      letter-spacing: 0.01em;
     }
     .hint {
       font-size: 0.78rem;
@@ -19,6 +29,10 @@ export class JvFormField extends LitElement {
       font-size: 0.78rem;
       color: var(--jv-danger);
       margin-top: var(--jv-xs);
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.28);
+      padding: var(--jv-xs) var(--jv-sm);
+      border-radius: var(--jv-sm);
     }
   `;
 

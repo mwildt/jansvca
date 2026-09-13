@@ -9,7 +9,8 @@ import "../components/molecules/JvToast";
 import "../components/templates/index";
 import "../components/organisms/index";
 
-// Page shell: top navigation, auth gate and routed content area.
+// Page shell: top navigation, auth gate and routed content area. The login
+// gate mirrors the idp login design (brand mark, card surface, primary CTA).
 @customElement("jv-app")
 export class JvApp extends LitElement {
   static styles = [tokenStyles, css`
@@ -105,22 +106,41 @@ export class JvApp extends LitElement {
       margin: 0 auto;
       padding: var(--jv-2xl) var(--jv-2xl) var(--jv-2xl);
     }
-    .login {
-      max-width: 420px;
-      margin: 96px auto;
-      text-align: center;
-      background: var(--jv-surface);
-      border: 1px solid var(--jv-border);
-      border-radius: var(--jv-lg);
+    .gate {
+      min-height: calc(100vh - 60px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
       padding: var(--jv-2xl);
-      box-shadow: var(--jv-shadow-lg);
+    }
+    .login {
+      width: 100%;
+      max-width: 380px;
+      text-align: center;
+    }
+    .login .brand {
+      justify-content: center;
+      margin-bottom: var(--jv-xl);
+    }
+    .login .brand .mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
     }
     .login h2 {
-      margin: 0 0 var(--jv-md);
+      margin: 0 0 var(--jv-sm);
+      font-size: 1.25rem;
+      font-weight: 700;
     }
     .login p {
       color: var(--jv-text-muted);
-      margin-bottom: var(--jv-xl);
+      font-size: 0.85rem;
+      margin: 0 0 var(--jv-xl);
+    }
+    .loading {
+      padding: var(--jv-2xl);
+      display: flex;
+      justify-content: center;
     }
   `];
 
@@ -157,13 +177,16 @@ export class JvApp extends LitElement {
   }
 
   render() {
-    if (!this.authReady) return html`<div class="main"><p>L\u00e4dt\u2026</p></div>`;
+    if (!this.authReady) return html`<div class="loading"><jv-spinner></jv-spinner></div>`;
     const authEnabled = !window.location.search.includes("noauth");
     if (!this.user.authenticated && authEnabled) {
-      return html`<div class="login">
-        <h2>Anmeldung erforderlich</h2>
-        <p>Bitte melde dich \u00fcber den OAuth2-Provider an.</p>
-        <jv-button variant="primary" @click=${this.#login}>Anmelden</jv-button>
+      return html`<div class="gate">
+        <jv-card class="login">
+          <div class="brand"><span class="mark"></span><span>jansvca</span></div>
+          <h2>Anmeldung</h2>
+          <p>Melde dich über den OAuth2-Provider an.</p>
+          <jv-button variant="primary" @click=${this.#login}>Anmelden</jv-button>
+        </jv-card>
       </div>`;
     }
     return html`
