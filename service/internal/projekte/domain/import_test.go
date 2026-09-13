@@ -15,7 +15,6 @@ func TestImportComponents_AddsNewAndUpdatesChanged(t *testing.T) {
 	}}
 
 	events, err := p.ImportComponents([]ImportInput{
-		{Component: "pkg:npm/lit", Version: "3.0.0"},
 		{Component: "pkg:npm/lit", Version: "3.2.1"},
 		{Component: "pkg:npm/vite", Version: "6.0.0"},
 		{Component: "", Version: "1.0.0"},

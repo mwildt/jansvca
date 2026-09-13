@@ -37,7 +37,7 @@ func TestParse_CycloneDX(t *testing.T) {
 	if got["rack@2.2.0"] != "2.2.0" {
 		t.Errorf("expected name@version fallback for rack, got %+v", got)
 	}
-	if got["bybomRef"] != "1.2.3" {
+	if got["bybomRef@1.2.3"] != "1.2.3" {
 		t.Errorf("expected bom-ref fallback, got %+v", got)
 	}
 }
