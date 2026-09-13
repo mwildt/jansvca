@@ -1,15 +1,34 @@
-# docker-compose for the two-container setup:
-#   service  – backend REST API (hexagonal Go, event sourcing)
-#   app      – BFF (Lit SPA + session + gateway), proxies /api/* to the service
+# docker-compose for the local three-container setup:
+#   idp      \u2013 minimal OAuth2 provider (users/clients from YAML)
+#   service  \u2013 backend REST API (hexagonal Go, event sourcing), upstream of app
+#   app      \u2013 BFF (Lit SPA + session + gateway), proxies /api/* to the service
 #
-# Build both images from the repo root:
+# Build all images from the repo root:
 #   docker compose build
 #   docker compose up
 #
 # The app container reaches the service over the compose network as
-# http://service:8080 (the service's JANSVCA_ADDR default).
+# http://service:8080 and the idp as http://idp:8080 (server-to-server, used for
+# token exchange and introspection). The browser reaches the idp authorize
+# endpoint via http://localhost:8090 (mapped below).
 
 services:
+  idp:
+    build:
+      context: .
+      dockerfile: idp/Dockerfile
+    image: ghcr.io/mwildt/jansvca-idp:latest
+    environment:
+      IDP_ADDR: ":8080"
+      IDP_CONFIG: /etc/jansvca/idp-config.yaml
+    expose:
+      - "8080"
+    # Browser-facing port for the /authorize redirect. Keep in sync with the
+    # app's JANSVCA_OAUTH2_AUTHORIZATION_URL below.
+    ports:
+      - "8090:8080"
+    restart: unless-stopped
+
   service:
     build:
       context: .
@@ -18,14 +37,16 @@ services:
     environment:
       JANSVCA_ADDR: ":8080"
       JANSVCA_DATA_DIR: /data
-      # Optional OAuth2 introspection on the backend itself.
-      # JANSVCA_OAUTH2_INTROSPECTION_URL: https://provider/introspect
-      # JANSVCA_OAUTH2_CLIENT_ID: ...
-      # JANSVCA_OAUTH2_CLIENT_SECRET: ...
+      # Backend validates the Bearer token (injected by the app) via the idp.
+      JANSVCA_OAUTH2_INTROSPECTION_URL: http://idp:8080/introspect
+      JANSVCA_OAUTH2_CLIENT_ID: jansvca-app
+      JANSVCA_OAUTH2_CLIENT_SECRET: jansvca-app-secret
     volumes:
       - service-data:/data
     expose:
       - "8080"
+    depends_on:
+      - idp
     restart: unless-stopped
 
   app:
@@ -37,20 +58,22 @@ services:
       JANSVCA_ADDR: ":8080"
       JANSVCA_BACKEND_URL: http://service:8080
       JANSVCA_SPA_DIR: /app/dist
-      # OAuth2 Authorization-Code-Flow in the BFF (optional).
-      # JANSVCA_OAUTH2_AUTHORIZATION_URL: https://provider/authorize
-      # JANSVCA_OAUTH2_TOKEN_URL: https://provider/token
-      # JANSVCA_OAUTH2_INTROSPECTION_URL: https://provider/introspect
-      # JANSVCA_OAUTH2_CLIENT_ID: ...
-      # JANSVCA_OAUTH2_CLIENT_SECRET: ...
-      # JANSVCA_OAUTH2_REDIRECT_URL: http://localhost:8080/api/auth/callback
-      # JANSVCA_SECURE_COOKIES: "true"
+      # OAuth2 Authorization-Code-Flow in the BFF against the local idp.
+      # authorize is browser-facing (idp is published on :8090); token and
+      # introspect are server-to-server over the compose network.
+      JANSVCA_OAUTH2_AUTHORIZATION_URL: http://localhost:8090/authorize
+      JANSVCA_OAUTH2_TOKEN_URL: http://idp:8080/token
+      JANSVCA_OAUTH2_INTROSPECTION_URL: http://idp:8080/introspect
+      JANSVCA_OAUTH2_CLIENT_ID: jansvca-app
+      JANSVCA_OAUTH2_CLIENT_SECRET: jansvca-app-secret
+      JANSVCA_OAUTH2_REDIRECT_URL: http://localhost:8080/api/auth/callback
       # Gateway upstreams (comma-separated, optional /strip suffix):
       # JANSVCA_GATEWAY_UPSTREAMS: "/proxy/svc=https://api.example.com/strip"
     ports:
       - "8080:8080"
     depends_on:
       - service
+      - idp
     restart: unless-stopped
 
 volumes:
