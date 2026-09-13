@@ -161,3 +161,21 @@ func (h *CommandHandler) UpdateComponentVersion(id, component, version string) e
 	}
 	return h.commit(id, p.Version(), events)
 }
+
+// ImportComponents reconciles a set of components against the project state,
+// adding new components and updating changed versions. Inputs with empty
+// component or version are skipped.
+func (h *CommandHandler) ImportComponents(id string, inputs []domain.ImportInput) (int, error) {
+	p, err := h.repo.Load(id)
+	if err != nil {
+		return 0, err
+	}
+	events, err := p.ImportComponents(inputs)
+	if err != nil {
+		return 0, err
+	}
+	if err := h.commit(id, p.Version(), events); err != nil {
+		return 0, err
+	}
+	return len(events), nil
+}

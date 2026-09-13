@@ -61,12 +61,16 @@ Projekt, welche Schwachstellen auf die eingesetzten Komponenten zutreffen.
 
 ### `projekte`
 
-- **Verantwortung:** Projekte und deren Komponenten mit Koordinaten erfassen.
+- **Verantwortung:** Projekte und deren Komponenten mit Koordinaten erfassen,
+  sowohl einzeln als auch über einen CycloneDX-SBOM-Import.
 - **Aggregate:** `Project` (mit Komponentenliste), `Component` (Koordinate + Version).
 - **Events:** `ProjectCreated`, `ProjectRenamed`, `ProjectDescriptionChanged`,
   `ProjectDeleted`, `ComponentAdded`, `ComponentRemoved`,
   `ComponentVersionUpdated`.
 - **Eigener Eventstore.**
+- **SBOM-Import:** das `sbom`-Paket parst CycloneDX-JSON in eine Liste von
+  Komponenten-Deklarationen; `ImportComponents` gleicht diese gegen den
+  Projektzustand ab und emittiert `ComponentAdded`/`ComponentVersionUpdated`.
 
 ### `schwachstellen`
 

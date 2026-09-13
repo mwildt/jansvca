@@ -42,6 +42,12 @@ export interface AuthUser {
   name?: string;
 }
 
+export interface SbomImportResult {
+  imported: number;
+  components: number;
+  project: ProjectView;
+}
+
 export interface ApiError {
   error: string;
 }
