@@ -9,7 +9,7 @@
 package server
 
 import (
-	"embed"
+	_ "embed"
 	"encoding/json"
 	"html/template"
 	"net/http"
