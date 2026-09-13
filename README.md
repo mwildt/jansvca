@@ -22,9 +22,12 @@ Page Shell).
 ```
 Browser ──(Cookie-Session)──► app (BFF :8080)
                                  │
-                                 ├─ /api/* ──► service (Backend :8080)
+                                 ├─ /api/* ──► service (Backend :8080) ──► idp /introspect
                                  ├─ /proxy/* ─► externe Upstreams (Gateway)
                                  └─ /* ──► gebaute SPA (/app/dist)
+
+Login: Browser ──► idp /authorize (:8090) ──(code)──► app /api/auth/callback
+         app ──(code)──► idp /token ──(access_token in Session)
 ```
 
 - **`/service`** – hexagonale Module (Ports & Adapters), Event Sourcing
@@ -40,13 +43,19 @@ Browser ──(Cookie-Session)──► app (BFF :8080)
     validiert.
   - Fungiert als **Gateway** vor weiteren Services: konfigurierte Upstreams
     werden unter einem Pfad-Prefix proxt, ebenfalls mit dem Session-Token.
+- **`/idp`** – minimaler OAuth2-Provider (Authorization-Code-Flow):
+  - Nutzer und Clients aus `idp-config.yaml`; Passwörter als bcrypt-Hash
+    (Klartext-Passwörter werden beim Laden gehasht, nur für lokale Entwicklung).
+  - Endpunkte: `GET/POST /authorize` (eingebautes Login-Formular),
+    `POST /token` (Code-Austausch), `POST /introspect` (RFC 7662).
+  - Codes und Tokens sind zufällige, kurze, einmalige/opake Strings im Speicher.
 - **`/app/frontend`** – Lit-SPA (Vite + TypeScript), Atomic Design.
 
 Siehe `docs/architecture.md` für die Backend-Architektur.
 
 ## Build & Test
 
-Beide Module sind unabhängige Go-Projekte mit eigenem `go.mod`.
+Alle drei Module sind unabhängige Go-Projekte mit eigenem `go.mod`.
 
 ```bash
 # Backend (service)
@@ -55,6 +64,9 @@ Beide Module sind unabhängige Go-Projekte mit eigenem `go.mod`.
 # Web-Anwendung (BFF + Gateway)
 (cd app && go build ./... && go test ./...)
 
+# OAuth2-Provider (idp)
+(cd idp && go build ./... && go test ./...)
+
 # Frontend (SPA)
 cd app/frontend
 npm install
@@ -62,12 +74,14 @@ npm run build        # baut nach app/dist
 npm run typecheck
 ```
 
-## Docker (zwei Container)
+## Docker (drei Container)
 
-Es gibt zwei Images, die über `docker-compose` zusammen gestartet werden: der
-`service` ist der Upstream der `app`. Das CI-Build veröffentlicht beide Images
-in die **GitHub Container Registry**:
+Es gibt drei Images, die über `docker-compose` zusammen gestartet werden: der
+`service` ist der Upstream der `app`, und der `idp` ist der OAuth2-Provider für
+den Login. Das CI-Build veröffentlicht alle Images in die **GitHub Container
+Registry**:
 
+- `ghcr.io/mwildt/jansvca-idp`
 - `ghcr.io/mwildt/jansvca-service`
 - `ghcr.io/mwildt/jansvca-app`
 
@@ -79,16 +93,33 @@ docker compose up
 ```
 
 Die App ist unter `http://localhost:8080` erreichbar und proxt `/api/*` an den
-Service-Container (`http://service:8080`).
+Service-Container (`http://service:8080`). Der IdP ist unter `http://localhost:8090`
+erreichbar (für den `/authorize`-Redirect im Browser); Token- und
+Introspection-Aufrufe laufen serverseitig über das Compose-Netzwerk
+(`http://idp:8080`).
+
+Login: Benutzer `admin`, Passwort `admin` (siehe `idp-config.yaml`).
 
 ### Einzeln bauen
 
 ```bash
+# IdP-Image (OAuth2-Provider, alpine)
+docker build -t jansvca-idp -f idp/Dockerfile .
+
 # Service-Image (FROM scratch, distroless)
 docker build -t jansvca-service -f service/Dockerfile .
 
 # App-Image (Lit SPA + Go-BFF, alpine)
 docker build -t jansvca-app -f app/Dockerfile .
+```
+
+### Ausführen — lokal mit IdP (drei Container, OAuth2-Flow)
+
+```bash
+docker compose up
+# App:  http://localhost:8080   (Login via http://localhost:8090/authorize)
+# IdP: http://localhost:8090
+# Login: admin / admin
 ```
 
 ### Ausführen — ohne OAuth2
@@ -129,21 +160,36 @@ Gateway-Upstreams konfigurieren (komma-separiert, optional `/strip`):
 
 ## Lokal ausführen
 
-### Entwicklung (Frontend-Dev-Server + BFF + Service)
+### Entwicklung (Frontend-Dev-Server + BFF + Service + IdP)
 
-In drei Terminals:
+In vier Terminals:
 
 ```bash
-# 1) Backend-Service
-(cd service && JANSVCA_DATA_DIR=./data JANSVCA_ADDR=:8081 go run ./cmd/jansvca)
+# 1) IdP (OAuth2-Provider, :8090)
+(cd idp && IDP_CONFIG=../idp-config.yaml IDP_ADDR=:8090 go run ./cmd/idp)
 
-# 2) BFF (proxt /api an :8081)
+# 2) Backend-Service (:8081, validiert Token über den IdP)
+(cd service && JANSVCA_DATA_DIR=./data JANSVCA_ADDR=:8081 \
+   JANSVCA_OAUTH2_INTROSPECTION_URL=http://localhost:8090/introspect \
+   JANSVCA_OAUTH2_CLIENT_ID=jansvca-app JANSVCA_OAUTH2_CLIENT_SECRET=jansvca-app-secret \
+   go run ./cmd/jansvca)
+
+# 3) BFF (proxt /api an :8081, OAuth2 gegen den IdP)
 (cd app && JANSVCA_BACKEND_URL=http://localhost:8081 JANSVCA_ADDR=:8080 \
-   JANSVCA_SPA_DIR=./dist go run ./cmd/jansvca-app)
+   JANSVCA_SPA_DIR=./dist \
+   JANSVCA_OAUTH2_AUTHORIZATION_URL=http://localhost:8090/authorize \
+   JANSVCA_OAUTH2_TOKEN_URL=http://localhost:8090/token \
+   JANSVCA_OAUTH2_INTROSPECTION_URL=http://localhost:8090/introspect \
+   JANSVCA_OAUTH2_CLIENT_ID=jansvca-app JANSVCA_OAUTH2_CLIENT_SECRET=jansvca-app-secret \
+   JANSVCA_OAUTH2_REDIRECT_URL=http://localhost:8080/api/auth/callback \
+   go run ./cmd/jansvca-app)
 
-# 3) Frontend-Dev-Server (proxt /api an den BFF auf :8080)
+# 4) Frontend-Dev-Server (proxt /api an den BFF auf :8080)
 cd app/frontend && npm run dev
 ```
+
+Login über `http://localhost:8080/api/auth/login` leitet zum IdP auf `:8090`
+weiter; nach Anmeldung (admin/admin) erfolgt der Callback am BFF.
 
 ### Produktion (BFF liefert gebaute SPA)
 
@@ -155,6 +201,13 @@ cd app/frontend && npm run dev
 ```
 
 ## Umgebungsvariablen
+
+### `/idp`
+
+| Variable | Default | Bedeutung |
+|----------|---------|----------|
+| `IDP_ADDR` | `:8080` | Listen-Adresse des IdP |
+| `IDP_CONFIG` | `./idp-config.yaml` | Pfad zur YAML-Konfig (Nutzer + Clients) |
 
 ### `/service`
 

@@ -81,10 +81,39 @@ jobs:
         working-directory: app
         run: go test ./...
 
+  idp:
+    name: IdP (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: idp
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: idp/go.mod
+      - name: Download modules
+        run: go mod download
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: gofmt
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "gofmt would reformat:"
+            echo "$out"
+            exit 1
+          fi
+      - name: Test
+        run: go test ./...
+
   docker:
     name: Docker images
     runs-on: ubuntu-latest
-    needs: [service, app]
+    needs: [service, app, idp]
     permissions:
       contents: read
       packages: write
@@ -133,6 +162,23 @@ jobs:
           tags: ${{ steps.meta-app.outputs.tags }}
           labels: ${{ steps.meta-app.outputs.labels }}
 
+      - name: Derive idp image tags
+        id: meta-idp
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/jansvca-idp
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+      - name: Build and push idp image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: idp/Dockerfile
+          push: true
+          tags: ${{ steps.meta-idp.outputs.tags }}
+          labels: ${{ steps.meta-idp.outputs.labels }}
+
       - name: Smoke test (service starts and serves /api/projects)
         run: |
           IMAGE="ghcr.io/${{ github.repository_owner }}/jansvca-service:sha-$(git rev-parse --short HEAD)"
@@ -141,6 +187,16 @@ jobs:
           docker logs service-smoke
           curl -fsS http://127.0.0.1:18080/api/projects || docker logs service-smoke
           docker stop service-smoke
+
+      - name: Smoke test (idp serves the authorize login form)
+        run: |
+          IDP="ghcr.io/${{ github.repository_owner }}/jansvca-idp:sha-$(git rev-parse --short HEAD)"
+          docker run --rm -d --name idp-smoke -p 18090:8080 "$IDP"
+          sleep 3
+          docker logs idp-smoke
+          curl -fsS "http://127.0.0.1:18090/authorize?response_type=code&client_id=jansvca-app&redirect_uri=http://localhost:8080/api/auth/callback&state=x" \
+            | grep -q "Anmeldung" || docker logs idp-smoke
+          docker stop idp-smoke
 
       - name: Smoke test (app serves SPA and proxies /api to service)
         run: |

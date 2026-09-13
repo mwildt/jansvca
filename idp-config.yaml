@@ -1,0 +1,26 @@
+# jansvca IdP configuration.
+#
+# Users and clients for the local OAuth2 provider. Passwords can be stored as
+# bcrypt hashes (password_hash) or as plaintext (password), which is hashed
+# with bcrypt on load for local development convenience. Do NOT use plaintext
+# passwords outside local dev.
+#
+# Start the provider and point the app (BFF) at it:
+#   IDP_CONFIG=./idp-config.yaml go run ./cmd/idp
+#
+# Login: subject "admin", password "admin".
+
+clients:
+  - id: jansvca-app
+    secret: jansvca-app-secret
+    redirect_uris:
+      # Browser-facing callback of the BFF. The IdP must accept exactly this URL.
+      - http://localhost:8080/api/auth/callback
+
+users:
+  - subject: admin
+    name: Administrator
+    password: admin
+  - subject: dev
+    name: Entwickler
+    password: dev
