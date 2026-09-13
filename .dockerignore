@@ -1,0 +1,14 @@
+# Build artifacts
+/data/
+*.wal
+*.test
+/bin/
+
+# Version control / editor cruft
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.md
+docs/

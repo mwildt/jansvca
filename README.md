@@ -23,6 +23,25 @@ go build ./...
 go test ./...
 ```
 
+## Docker
+
+Multistage-Build (Go-Build → `FROM scratch`). Das fertige Image enthält nur
+statisches Binary + CA-Zertifikate und ist distroless.
+
+```bash
+docker build -t jansvca .
+
+# ohne OAuth2 (API läuft ohne Auth):
+docker run --rm -p 8080:8080 -v jansvca-data:/data jansvca
+
+# mit OAuth2-Introspection:
+docker run --rm -p 8080:8080 -v jansvca-data:/data \
+  -e JANSVCA_OAUTH2_INTROSPECTION_URL=https://provider/oauth2/introspect \
+  -e JANSVCA_OAUTH2_CLIENT_ID=... \
+  -e JANSVCA_OAUTH2_CLIENT_SECRET=... \
+  jansvca
+```
+
 ## Ausführen
 
 ```bash
