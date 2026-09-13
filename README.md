@@ -244,7 +244,9 @@ weiter; nach Anmeldung (admin/admin) erfolgt der Callback am BFF.
 - `PATCH  /api/projects/{id}`                         Projekt umbenennen/beschreiben
 - `DELETE /api/projects/{id}`                         Projekt soft-löschen
 - `POST   /api/projects/{id}/components`              Komponente hinzufügen
+- `PUT    /api/projects/{id}/components/{component}`  Komponentenversion ändern
 - `DELETE /api/projects/{id}/components/{component}`  Komponente entfernen
+- `POST   /api/projects/{id}/sbom`                    CycloneDX-SBOM importieren (Komponenten anlegen/aktualisieren)
 - `GET    /api/projects/{id}/matches`                 Treffer für Projekt
 - `POST   /api/vulnerabilities`                       Schwachstelle anlegen
 - `GET    /api/vulnerabilities`                       Schwachstellen auflisten

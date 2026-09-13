@@ -6,6 +6,7 @@ import type {
   AuthUser,
   Match,
   ProjectView,
+  SbomImportResult,
   VulnerabilityView,
 } from "./types";
 
@@ -99,6 +100,39 @@ export const api = {
       `/api/projects/${encodeURIComponent(id)}/components/${encodeURIComponent(component)}`,
     );
   },
+  updateComponent(id: string, component: string, version: string): Promise<ProjectView> {
+    return request<ProjectView>(
+      "PUT",
+      `/api/projects/${encodeURIComponent(id)}/components/${encodeURIComponent(component)}`,
+      { version },
+    );
+  },
+  importSbom(id: string, data: string): Promise<SbomImportResult> {
+    const init: RequestInit = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: data,
+    };
+    return fetch(`/api/projects/${encodeURIComponent(id)}/sbom`, init).then(async (resp) => {
+      const text = await resp.text();
+      let parsed: unknown = undefined;
+      if (text) {
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = { error: text };
+        }
+      }
+      if (!resp.ok) {
+        const msg =
+          parsed && typeof parsed === "object" && "error" in parsed
+            ? String((parsed as { error: unknown }).error)
+            : `HTTP ${resp.status}`;
+        throw new Error(msg);
+      }
+      return parsed as SbomImportResult;
+    });
+  },
   matches(id: string): Promise<Match[]> {
     return request<Match[]>("GET", `/api/projects/${encodeURIComponent(id)}/matches`);
   },
@@ -128,4 +162,4 @@ export const api = {
   },
 };
 
-export type { AffectedRangeView, Match, ProjectView, VulnerabilityView };
+export type { AffectedRangeView, Match, ProjectView, SbomImportResult, VulnerabilityView };

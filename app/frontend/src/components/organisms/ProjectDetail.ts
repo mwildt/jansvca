@@ -7,6 +7,7 @@ import { toast } from "../molecules/JvToast";
 import "../molecules/JvConfirmDialog";
 import "../atoms/JvButton";
 import "../atoms/JvInput";
+import "../atoms/JvTextarea";
 import "../atoms/JvBadge";
 import { cvssTone } from "../atoms/JvBadge";
 
@@ -82,6 +83,45 @@ export class JvProjectDetail extends LitElement {
       font-variant-numeric: tabular-nums;
       font-weight: 600;
     }
+    .sbom-row {
+      margin-top: var(--jv-md);
+    }
+    .sbom {
+      margin-top: var(--jv-md);
+      padding: var(--jv-md);
+      border: 1px dashed var(--jv-border);
+      border-radius: var(--jv-md);
+      display: grid;
+      gap: var(--jv-sm);
+    }
+    .sbom .hint {
+      margin: 0;
+      color: var(--jv-text-muted);
+      font-size: 0.85rem;
+    }
+    .sbom-actions {
+      display: flex;
+      gap: var(--jv-sm);
+    }
+    .ver-edit {
+      display: flex;
+      align-items: center;
+      gap: var(--jv-xs);
+    }
+    .ver-input {
+      padding: var(--jv-xs) var(--jv-sm);
+      border-radius: var(--jv-sm);
+      border: 1px solid var(--jv-border);
+      background: var(--jv-surface);
+      color: var(--jv-text);
+      font-family: inherit;
+      font-size: 0.9rem;
+      max-width: 9rem;
+    }
+    .ver-input:focus {
+      outline: none;
+      border-color: var(--jv-primary);
+    }
   `;
 
   @property() projectId = "";
@@ -94,6 +134,12 @@ export class JvProjectDetail extends LitElement {
   @state() private edit = { name: "", description: "" };
   @state() private deleteOpen = false;
   @state() private removeComponent: string | null = null;
+  @state() private editingComponent: string | null = null;
+  @state() private editVersion = "";
+  @state() private savingVersion = false;
+  @state() private sbomOpen = false;
+  @state() private sbomText = "";
+  @state() private importing = false;
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -172,6 +218,63 @@ export class JvProjectDetail extends LitElement {
     }
   }
 
+  #startEditVersion(component: string, version: string): void {
+    this.editingComponent = component;
+    this.editVersion = version;
+  }
+
+  #cancelEditVersion(): void {
+    this.editingComponent = null;
+    this.editVersion = "";
+  }
+
+  async #saveVersion(component: string): Promise<void> {
+    if (!this.editVersion.trim()) {
+      toast("Version erforderlich", "error");
+      return;
+    }
+    this.savingVersion = true;
+    try {
+      await api.updateComponent(this.projectId, component, this.editVersion.trim());
+      this.editingComponent = null;
+      this.editVersion = "";
+      await this.#load();
+      toast("Version aktualisiert", "success");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      this.savingVersion = false;
+    }
+  }
+
+  async #pickSbomFile(e: Event): Promise<void> {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    this.sbomText = text;
+    input.value = "";
+  }
+
+  async #importSbom(): Promise<void> {
+    if (!this.sbomText.trim()) {
+      toast("SBOM ist leer", "error");
+      return;
+    }
+    this.importing = true;
+    try {
+      const res = await api.importSbom(this.projectId, this.sbomText);
+      await this.#load();
+      this.sbomOpen = false;
+      this.sbomText = "";
+      toast(`${res.imported} Komponente(n) importiert (${res.components} im SBOM)`, "success");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      this.importing = false;
+    }
+  }
+
   async #confirmDelete(): Promise<void> {
     this.deleteOpen = false;
     try {
@@ -235,6 +338,29 @@ export class JvProjectDetail extends LitElement {
           ></jv-input>
           <jv-button variant="primary" @click=${() => this.#addComponent()}>Hinzufügen</jv-button>
         </div>
+        <div class="sbom-row">
+          <jv-button @click=${() => (this.sbomOpen = !this.sbomOpen)}>
+            ${this.sbomOpen ? "SBOM-Upload schließen" : "SBOM hochladen (CycloneDX)"}
+          </jv-button>
+        </div>
+        ${this.sbomOpen
+          ? html`<div class="sbom">
+              <p class="hint">CycloneDX-JSON (bomFormat) als Datei auswählen oder als Text einfügen.</p>
+              <input type="file" accept="application/json,.json" @change=${(e: Event) => this.#pickSbomFile(e)} />
+              <jv-textarea
+                label="CycloneDX JSON"
+                placeholder='{"bomFormat":"CycloneDX", ...}'
+                .value=${this.sbomText}
+                @change=${(e: CustomEvent<{ value: string }>) => (this.sbomText = e.detail.value)}
+              ></jv-textarea>
+              <div class="sbom-actions">
+                <jv-button variant="primary" ?disabled=${this.importing} @click=${() => this.#importSbom()}>
+                  ${this.importing ? "Importiere…" : "Importieren"}
+                </jv-button>
+                <jv-button @click=${() => { this.sbomOpen = false; this.sbomText = ""; }}>Abbrechen</jv-button>
+              </div>
+            </div>`
+          : null}
         ${(p.components ?? []).length === 0
           ? html`<p style="color:var(--jv-text-muted);">Keine Komponenten.</p>`
           : html`<table>
@@ -245,9 +371,28 @@ export class JvProjectDetail extends LitElement {
                 ${(p.components ?? []).map(
                   (c) => html`<tr>
                     <td>${c.component}</td>
-                    <td><code>${c.version}</code></td>
+                    <td>
+                      ${this.editingComponent === c.component
+                        ? html`<div class="ver-edit">
+                            <input
+                              class="ver-input"
+                              .value=${this.editVersion}
+                              @input=${(e: InputEvent) => (this.editVersion = (e.target as HTMLInputElement).value)}
+                              @keydown=${(e: KeyboardEvent) => {
+                                if (e.key === "Enter") this.#saveVersion(c.component);
+                                if (e.key === "Escape") this.#cancelEditVersion();
+                              }}
+                            />
+                            <jv-button variant="primary" ?disabled=${this.savingVersion} @click=${() => this.#saveVersion(c.component)}>OK</jv-button>
+                            <jv-button @click=${() => this.#cancelEditVersion()}>✕</jv-button>
+                          </div>`
+                        : html`<code>${c.version}</code>`}
+                    </td>
                     <td>
                       <div class="row-actions">
+                        ${this.editingComponent === c.component
+                          ? null
+                          : html`<jv-button @click=${() => this.#startEditVersion(c.component, c.version)}>Bearbeiten</jv-button>`}
                         <jv-button variant="danger" @click=${() => (this.removeComponent = c.component)}>Entfernen</jv-button>
                       </div>
                     </td>

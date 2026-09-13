@@ -210,6 +210,56 @@ func (p *Project) UpdateComponentVersion(component, version string) ([]eventstor
 	}}, nil
 }
 
+// ImportInput is a single component declaration to import (e.g. from an SBOM).
+type ImportInput struct {
+	Component string
+	Version   string
+}
+
+// ImportComponents reconciles a set of components against the project state,
+// emitting ComponentAdded for new components and ComponentVersionUpdated for
+// components whose version changed. Components already present with the same
+// version are skipped. The returned count is the number of emitted events.
+func (p *Project) ImportComponents(inputs []ImportInput) ([]eventstore.PayloadEvent, error) {
+	if p == nil || p.ID == "" {
+		return nil, errors.New("projekte: project not found")
+	}
+	if p.Deleted {
+		return nil, ErrProjectDeleted
+	}
+	seen := map[string]string{}
+	var events []eventstore.PayloadEvent
+	for _, in := range inputs {
+		if in.Component == "" || in.Version == "" {
+			continue
+		}
+		if prev, dup := seen[in.Component]; dup {
+			if prev != in.Version {
+				return nil, fmt.Errorf("projekte: conflicting versions for %s: %s vs %s", in.Component, prev, in.Version)
+			}
+			continue
+		}
+		seen[in.Component] = in.Version
+		existing, ok := p.Components[in.Component]
+		if !ok {
+			events = append(events, ComponentAdded{
+				ProjectID: p.ID,
+				Component: in.Component,
+				Version:   in.Version,
+			})
+			continue
+		}
+		if existing.Version != in.Version {
+			events = append(events, ComponentVersionUpdated{
+				ProjectID: p.ID,
+				Component: in.Component,
+				Version:   in.Version,
+			})
+		}
+	}
+	return events, nil
+}
+
 func decode(env eventstore.Envelope, e any) error {
 	if len(env.Payload) == 0 {
 		return nil

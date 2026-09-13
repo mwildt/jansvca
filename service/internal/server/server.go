@@ -5,11 +5,13 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
 	"github.com/mwildt/jansvca/service/internal/eventstore"
 	projapp "github.com/mwildt/jansvca/service/internal/projekte/application"
+	"github.com/mwildt/jansvca/service/internal/sbom"
 	vulnapp "github.com/mwildt/jansvca/service/internal/schwachstellen/application"
 )
 
@@ -114,6 +116,48 @@ func registerProjects(mux *http.ServeMux, d Deps) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("PUT /api/projects/{id}/components/{component}", func(w http.ResponseWriter, r *http.Request) {
+		var b struct {
+			Version string `json:"version"`
+		}
+		if err := decodeJSON(r, &b); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		id := r.PathValue("id")
+		if err := d.Projects.UpdateComponentVersion(id, r.PathValue("component"), b.Version); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, d.ProjectRead.Get(id))
+	})
+	mux.HandleFunc("POST /api/projects/{id}/sbom", func(w http.ResponseWriter, r *http.Request) {
+		if r.Body == nil || r.ContentLength == 0 {
+			writeErr(w, http.StatusBadRequest, errors.New("empty request body"))
+			return
+		}
+		body, err := readBody(w, r)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		inputs, err := sbom.Parse(body)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		id := r.PathValue("id")
+		n, err := d.Projects.ImportComponents(id, inputs)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"imported":   n,
+			"project":    d.ProjectRead.Get(id),
+			"components": len(inputs),
+		})
+	})
 }
 
 func registerVulnerabilities(mux *http.ServeMux, d Deps) {
@@ -195,6 +239,10 @@ func decodeJSON(r *http.Request, v any) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	return dec.Decode(v)
+}
+
+func readBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+	return io.ReadAll(http.MaxBytesReader(w, r.Body, 10<<20))
 }
 
 // Ensure eventstore import is used (envelope types referenced transitively).
