@@ -4,11 +4,15 @@ import { api } from "../../shared/api/client";
 import type { VulnerabilityView } from "../../shared/api/types";
 import { navigate } from "../../shared/router";
 import { toast } from "../molecules/JvToast";
+import "../molecules/JvPageHeader";
 import "../molecules/JvEmpty";
 import "../molecules/JvConfirmDialog";
+import "../molecules/JvButtonRow";
 import "../atoms/JvButton";
 import "../atoms/JvInput";
 import "../atoms/JvBadge";
+import "../atoms/JvCode";
+import "../atoms/JvSpinner";
 import { cvssTone } from "../atoms/JvBadge";
 
 // Organism: list of vulnerabilities plus create form.
@@ -17,37 +21,6 @@ export class JvVulnList extends LitElement {
   static styles = css`
     :host {
       display: block;
-    }
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: var(--jv-xl);
-    }
-    .card {
-      background: var(--jv-surface);
-      border: 1px solid var(--jv-border);
-      border-radius: var(--jv-md);
-      padding: var(--jv-lg) var(--jv-xl);
-      margin-bottom: var(--jv-md);
-    }
-    .card a {
-      font-weight: 600;
-      font-size: 1.05rem;
-    }
-    .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: var(--jv-md);
-    }
-    .meta {
-      display: flex;
-      gap: var(--jv-lg);
-      color: var(--jv-text-muted);
-      font-size: 0.85rem;
-      margin-top: var(--jv-xs);
-      flex-wrap: wrap;
     }
     .form {
       display: grid;
@@ -64,6 +37,42 @@ export class JvVulnList extends LitElement {
       .form {
         grid-template-columns: 1fr;
       }
+    }
+    .item {
+      background: var(--jv-surface);
+      border: 1px solid var(--jv-border);
+      border-radius: var(--jv-md);
+      padding: var(--jv-lg) var(--jv-xl);
+      margin-bottom: var(--jv-md);
+      box-shadow: var(--jv-shadow-sm);
+      transition: border-color 0.14s ease, box-shadow 0.14s ease;
+    }
+    .item:hover {
+      border-color: var(--jv-border-strong);
+      box-shadow: var(--jv-shadow-md);
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--jv-md);
+    }
+    .row a {
+      font-weight: 600;
+      font-size: 1.05rem;
+      color: var(--jv-text);
+      text-decoration: none;
+    }
+    .row a:hover {
+      color: var(--jv-primary);
+    }
+    .meta {
+      display: flex;
+      gap: var(--jv-lg);
+      color: var(--jv-text-muted);
+      font-size: 0.85rem;
+      margin-top: var(--jv-xs);
+      flex-wrap: wrap;
     }
   `;
 
@@ -119,19 +128,15 @@ export class JvVulnList extends LitElement {
     try {
       await api.deleteVulnerability(id);
       await this.#load();
-      toast("Schwachstelle gelöscht", "success");
+      toast("Schwachstelle gel\u00f6scht", "success");
     } catch (e) {
       toast((e as Error).message, "error");
     }
   }
 
   render() {
-    return html`<div class="header">
-        <h2>Schwachstellen</h2>
-        <jv-button variant="primary" @click=${() => this.#submit()} ?disabled=${this.submitting}
-          >Anlegen</jv-button
-        >
-      </div>
+    return html`
+      <jv-page-header heading="Schwachstellen"></jv-page-header>
 
       <div class="form">
         <jv-input
@@ -157,45 +162,46 @@ export class JvVulnList extends LitElement {
           .value=${this.form.cvss}
           @change=${(e: CustomEvent<{ value: string }>) => (this.form.cvss = e.detail.value)}
         ></jv-input>
-        <jv-button variant="primary" @click=${() => this.#submit()} ?disabled=${this.submitting}
-          >Anlegen</jv-button
-        >
+        <jv-button variant="primary" @click=${() => this.#submit()} ?disabled=${this.submitting}>
+          Anlegen
+        </jv-button>
       </div>
 
       ${this.loading
-        ? html`<p>Lädt…</p>`
+        ? html`<jv-spinner></jv-spinner>`
         : this.vulns.length === 0
           ? html`<jv-empty
               heading="Keine Schwachstellen"
-              message="Lege eine Schwachstelle über das Formular an."
+              message="Lege eine Schwachstelle \u00fcber das Formular an."
             ></jv-empty>`
           : this.vulns.map(
               (v) => html`
-                <div class="card">
+                <div class="item">
                   <div class="row">
                     <a href=${`/vulnerabilities/${encodeURIComponent(v.id)}`} data-link>${v.title}</a>
                     <jv-badge tone=${cvssTone(v.cvss)}>${v.cvss.toFixed(1)}</jv-badge>
                   </div>
                   <div class="meta">
-                    <span>${v.id}</span>
+                    <jv-code>${v.id}</jv-code>
                     <span>${v.identifier}</span>
                     <span>${v.affected.length} Affected-Ranges</span>
                   </div>
-                  <div style="margin-top:8px; display:flex; gap:8px;">
-                    <jv-button @click=${() => navigate(`/vulnerabilities/${encodeURIComponent(v.id)}`)}>Öffnen</jv-button>
-                    <jv-button variant="danger" @click=${() => (this.deleteId = v.id)}>Löschen</jv-button>
-                  </div>
+                  <jv-button-row style="margin-top:var(--jv-md);">
+                    <jv-button @click=${() => navigate(`/vulnerabilities/${encodeURIComponent(v.id)}`)}>\u00d6ffnen</jv-button>
+                    <jv-button variant="danger" @click=${() => (this.deleteId = v.id)}>L\u00f6schen</jv-button>
+                  </jv-button-row>
                 </div>
               `,
             )}
 
       <jv-confirm-dialog
         .open=${this.deleteId !== null}
-        heading="Schwachstelle löschen?"
+        heading="Schwachstelle l\u00f6schen?"
         message="Die Schwachstelle wird soft-deleted."
         @confirm=${() => this.#confirmDelete()}
         @cancel=${() => (this.deleteId = null)}
-      ></jv-confirm-dialog>`;
+      ></jv-confirm-dialog>
+    `;
   }
 }
 

@@ -1,13 +1,19 @@
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { api } from "../../shared/api/client";
-import type { VulnerabilityView } from "../../shared/api/types";
+import type { AffectedRangeView, VulnerabilityView } from "../../shared/api/types";
 import { navigate } from "../../shared/router";
 import { toast } from "../molecules/JvToast";
+import "../molecules/JvBreadcrumb";
 import "../molecules/JvConfirmDialog";
+import "../molecules/JvSection";
+import "../molecules/JvButtonRow";
+import "../molecules/JvTable";
 import "../atoms/JvButton";
 import "../atoms/JvInput";
 import "../atoms/JvBadge";
+import "../atoms/JvCode";
+import "../atoms/JvSpinner";
 import { cvssTone } from "../atoms/JvBadge";
 
 // Organism: vulnerability detail with affected ranges.
@@ -17,62 +23,32 @@ export class JvVulnDetail extends LitElement {
     :host {
       display: block;
     }
-    .top {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: var(--jv-lg);
-      margin-bottom: var(--jv-xl);
-    }
     .id {
       color: var(--jv-text-muted);
       font-size: 0.9rem;
-    }
-    .section {
-      background: var(--jv-surface);
-      border: 1px solid var(--jv-border);
-      border-radius: var(--jv-md);
-      padding: var(--jv-lg) var(--jv-xl);
-      margin-bottom: var(--jv-xl);
-    }
-    h3 {
-      margin: 0 0 var(--jv-md);
+      margin-top: var(--jv-xs);
     }
     .desc {
       color: var(--jv-text-muted);
       margin-bottom: var(--jv-md);
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.92rem;
-    }
-    th, td {
-      text-align: left;
-      padding: var(--jv-sm) var(--jv-md);
-      border-bottom: 1px solid var(--jv-border);
-    }
-    th {
-      color: var(--jv-text-muted);
-      font-weight: 600;
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .row-actions {
-      display: flex;
-      gap: var(--jv-xs);
+      line-height: 1.5;
     }
     .form {
       display: grid;
       grid-template-columns: 2fr 2fr auto;
       gap: var(--jv-md);
       align-items: end;
+      margin-bottom: var(--jv-lg);
     }
     @media (max-width: 760px) {
       .form {
         grid-template-columns: 1fr;
       }
+    }
+    .empty {
+      color: var(--jv-text-muted);
+      padding: var(--jv-lg) 0;
+      text-align: center;
     }
   `;
 
@@ -83,6 +59,8 @@ export class JvVulnDetail extends LitElement {
   @state() private form = { component: "", version_range: "" };
   @state() private deleteOpen = false;
   @state() private removeComponent: string | null = null;
+
+  #rangeColumns = [{ label: "Komponente" }, { label: "Version-Range" }, { label: "" }];
 
   connectedCallback(): void {
     super.connectedCallback();
@@ -118,7 +96,7 @@ export class JvVulnDetail extends LitElement {
       });
       this.form = { component: "", version_range: "" };
       await this.#load();
-      toast("Affected-Range hinzugefügt", "success");
+      toast("Affected-Range hinzugef\u00fcgt", "success");
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -141,37 +119,48 @@ export class JvVulnDetail extends LitElement {
     this.deleteOpen = false;
     try {
       await api.deleteVulnerability(this.vulnId);
-      toast("Schwachstelle gelöscht", "success");
+      toast("Schwachstelle gel\u00f6scht", "success");
       navigate("/vulnerabilities");
     } catch (e) {
       toast((e as Error).message, "error");
     }
   }
 
+  #renderRangeCell = (a: AffectedRangeView, i: number): TemplateResult => {
+    if (i === 0) return html`<td>${a.component}</td>`;
+    if (i === 1) return html`<td><jv-code>${a.version_range}</jv-code></td>`;
+    return html`<td>
+      <jv-button-row align="end">
+        <jv-button variant="danger" @click=${() => (this.removeComponent = a.component)}>Entfernen</jv-button>
+      </jv-button-row>
+    </td>`;
+  };
+
   render() {
-    if (this.loading) return html`<p>Lädt…</p>`;
+    if (this.loading) return html`<jv-spinner></jv-spinner>`;
     if (!this.vuln) return html`<p>Schwachstelle nicht gefunden.</p>`;
     const v = this.vuln;
     return html`
-      <div class="top">
+      <jv-breadcrumb href="/vulnerabilities">\u2190 Schwachstellen</jv-breadcrumb>
+
+      <div style="display:flex; justify-content:space-between; align-items:baseline; gap:var(--jv-lg); margin-bottom:var(--jv-xl);">
         <div>
-          <a href="/vulnerabilities" data-link>← Schwachstellen</a>
-          <h2 style="margin:4px 0;">${v.title}</h2>
-          <div class="id">${v.id} · ${v.identifier}</div>
+          <h2 style="margin:0 0 var(--jv-xs); font-size:1.6rem; letter-spacing:-0.02em;">${v.title}</h2>
+          <div class="id">
+            <jv-code>${v.id}</jv-code> \u00b7 ${v.identifier}
+          </div>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
+        <jv-button-row>
           <jv-badge tone=${cvssTone(v.cvss)}>CVSS ${v.cvss.toFixed(1)}</jv-badge>
-          <jv-button variant="danger" @click=${() => (this.deleteOpen = true)}>Löschen</jv-button>
-        </div>
+          <jv-button variant="danger" @click=${() => (this.deleteOpen = true)}>L\u00f6schen</jv-button>
+        </jv-button-row>
       </div>
 
-      <div class="section">
-        <h3>Beschreibung</h3>
+      <jv-section heading="Beschreibung">
         <p class="desc">${v.description || "Keine Beschreibung"}</p>
-      </div>
+      </jv-section>
 
-      <div class="section">
-        <h3>Affected-Ranges (${v.affected.length})</h3>
+      <jv-section heading="Affected-Ranges" .count=${v.affected.length}>
         <div class="form">
           <jv-input
             label="Komponente"
@@ -185,33 +174,20 @@ export class JvVulnDetail extends LitElement {
             .value=${this.form.version_range}
             @change=${(e: CustomEvent<{ value: string }>) => (this.form.version_range = e.detail.value)}
           ></jv-input>
-          <jv-button variant="primary" @click=${() => this.#addRange()}>Hinzufügen</jv-button>
+          <jv-button variant="primary" @click=${() => this.#addRange()}>Hinzuf\u00fcgen</jv-button>
         </div>
         ${v.affected.length === 0
-          ? html`<p style="color:var(--jv-text-muted);">Keine Affected-Ranges.</p>`
-          : html`<table>
-              <thead>
-                <tr><th>Komponente</th><th>Version-Range</th><th></th></tr>
-              </thead>
-              <tbody>
-                ${v.affected.map(
-                  (a) => html`<tr>
-                    <td>${a.component}</td>
-                    <td><code>${a.version_range}</code></td>
-                    <td>
-                      <div class="row-actions">
-                        <jv-button variant="danger" @click=${() => (this.removeComponent = a.component)}>Entfernen</jv-button>
-                      </div>
-                    </td>
-                  </tr>`,
-                )}
-              </tbody>
-            </table>`}
-      </div>
+          ? html`<div class="empty">Keine Affected-Ranges.</div>`
+          : html`<jv-table
+              .columns=${this.#rangeColumns}
+              .rows=${v.affected}
+              .renderCell=${this.#renderRangeCell}
+            ></jv-table>`}
+      </jv-section>
 
       <jv-confirm-dialog
         .open=${this.deleteOpen}
-        heading="Schwachstelle löschen?"
+        heading="Schwachstelle l\u00f6schen?"
         message="Die Schwachstelle wird soft-deleted."
         @confirm=${() => this.#confirmDelete()}
         @cancel=${() => (this.deleteOpen = false)}
@@ -219,7 +195,7 @@ export class JvVulnDetail extends LitElement {
       <jv-confirm-dialog
         .open=${this.removeComponent !== null}
         heading="Affected-Range entfernen?"
-        message=${`Range für ${this.removeComponent ?? ""} wird entfernt.`}
+        message=${`Range f\u00fcr ${this.removeComponent ?? ""} wird entfernt.`}
         @confirm=${() => this.#confirmRemove()}
         @cancel=${() => (this.removeComponent = null)}
       ></jv-confirm-dialog>

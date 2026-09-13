@@ -4,10 +4,14 @@ import { api } from "../../shared/api/client";
 import type { ProjectView } from "../../shared/api/types";
 import { navigate } from "../../shared/router";
 import { toast } from "../molecules/JvToast";
+import "../molecules/JvPageHeader";
+import "../molecules/JvStatGrid";
 import "../molecules/JvEmpty";
 import "../molecules/JvConfirmDialog";
 import "../atoms/JvButton";
 import "../atoms/JvBadge";
+import "../atoms/JvStat";
+import "../atoms/JvSpinner";
 
 // Organism: project overview list. Creation happens on the dedicated
 // /projects/new page so this view stays a focused list.
@@ -17,44 +21,18 @@ export class JvProjectList extends LitElement {
     :host {
       display: block;
     }
-    .header {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: var(--jv-lg);
-      margin-bottom: var(--jv-xl);
-    }
-    .header h1 {
-      margin: 0;
-      font-size: 1.6rem;
-      letter-spacing: -0.02em;
-    }
-    .header .sub {
-      color: var(--jv-text-muted);
-      font-size: 0.9rem;
-      margin-top: var(--jv-xs);
-    }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
       gap: var(--jv-md);
     }
     .card {
-      background: var(--jv-surface);
-      border: 1px solid var(--jv-border);
-      border-radius: var(--jv-md);
-      padding: var(--jv-lg);
-      box-shadow: var(--jv-shadow-sm);
-      cursor: pointer;
-      transition: border-color 0.14s ease, transform 0.1s ease, box-shadow 0.14s ease;
       display: flex;
       flex-direction: column;
       gap: var(--jv-sm);
-    }
-    .card:hover {
-      border-color: var(--jv-border-strong);
-      transform: translateY(-2px);
-      box-shadow: var(--jv-shadow-md);
+      padding: var(--jv-lg);
+      border-radius: var(--jv-md);
+      box-shadow: var(--jv-shadow-sm);
     }
     .card .name {
       font-weight: 600;
@@ -105,27 +83,6 @@ export class JvProjectList extends LitElement {
       color: var(--jv-danger);
       background: var(--jv-danger-soft);
     }
-    .stats {
-      display: flex;
-      gap: var(--jv-md);
-      margin-bottom: var(--jv-xl);
-    }
-    .stat {
-      background: var(--jv-surface);
-      border: 1px solid var(--jv-border);
-      border-radius: var(--jv-md);
-      padding: var(--jv-md) var(--jv-lg);
-      min-width: 140px;
-    }
-    .stat .num {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--jv-text);
-    }
-    .stat .label {
-      color: var(--jv-text-muted);
-      font-size: 0.78rem;
-    }
   `;
 
   @state() private projects: ProjectView[] = [];
@@ -164,23 +121,24 @@ export class JvProjectList extends LitElement {
   render() {
     const totalComponents = this.projects.reduce((n, p) => n + (p.components?.length ?? 0), 0);
     return html`
-      <div class="header">
-        <div>
-          <h1>Projekte</h1>
-          <div class="sub">Verwalte Projekte und ihre eingesetzten Komponenten.</div>
-        </div>
-        <jv-button variant="primary" @click=${() => navigate("/projects/new")}>+ Neues Projekt</jv-button>
-      </div>
+      <jv-page-header
+        heading="Projekte"
+        subtitle="Verwalte Projekte und ihre eingesetzten Komponenten."
+      >
+        <jv-button slot="actions" variant="primary" @click=${() => navigate("/projects/new")}
+          >+ Neues Projekt</jv-button
+        >
+      </jv-page-header>
 
       ${!this.loading && this.projects.length > 0
-        ? html`<div class="stats">
-            <div class="stat"><div class="num">${this.projects.length}</div><div class="label">Projekte</div></div>
-            <div class="stat"><div class="num">${totalComponents}</div><div class="label">Komponenten</div></div>
-          </div>`
+        ? html`<jv-stat-grid>
+            <jv-stat value=${this.projects.length}>Projekte</jv-stat>
+            <jv-stat value=${totalComponents}>Komponenten</jv-stat>
+          </jv-stat-grid>`
         : null}
 
       ${this.loading
-        ? html`<p>L\u00e4dt\u2026</p>`
+        ? html`<jv-spinner></jv-spinner>`
         : this.projects.length === 0
           ? html`<jv-empty
               heading="Keine Projekte"
@@ -191,7 +149,11 @@ export class JvProjectList extends LitElement {
           : html`<div class="grid">
               ${this.projects.map(
                 (p) => html`
-                  <div class="card" @click=${() => navigate(`/projects/${encodeURIComponent(p.id)}`)}>
+                  <jv-card
+                    interactive
+                    class="card"
+                    @click=${() => navigate(`/projects/${encodeURIComponent(p.id)}`)}
+                  >
                     <div class="name">${p.name}</div>
                     <div class="id">${p.id}</div>
                     <div class="desc">${p.description || "Keine Beschreibung"}</div>
@@ -209,7 +171,7 @@ export class JvProjectList extends LitElement {
                         }}
                       >\u2715</button>
                     </div>
-                  </div>
+                  </jv-card>
                 `,
               )}
             </div>`}
