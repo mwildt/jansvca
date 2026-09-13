@@ -17,8 +17,8 @@ WORKDIR /src
 COPY app/go.mod ./app/go.mod
 RUN cd app && go mod download
 COPY app/ ./app/
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" \
-    -o /out/jansvca-app ./app/cmd/jansvca-app
+RUN cd app && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" \
+    -o /out/jansvca-app ./cmd/jansvca-app
 
 # ---- Runtime stage -------------------------------------------------------
 FROM alpine:3.20

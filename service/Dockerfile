@@ -10,8 +10,8 @@ WORKDIR /src
 COPY service/go.mod ./service/go.mod
 RUN cd service && go mod download
 COPY service/ ./service/
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" \
-    -o /out/jansvca ./service/cmd/jansvca
+RUN cd service && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" \
+    -o /out/jansvca ./cmd/jansvca
 
 # ---- Runtime stage -------------------------------------------------------
 FROM scratch
