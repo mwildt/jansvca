@@ -219,7 +219,7 @@ export class JvProjectDetail extends LitElement {
         : html`<p class="desc">${p.description || "Keine Beschreibung"}</p>`}
 
       <div class="section">
-        <h3>Komponenten (${p.components.length})</h3>
+        <h3>Komponenten (${(p.components ?? []).length})</h3>
         <div class="form">
           <jv-input
             label="Komponente"
@@ -235,14 +235,14 @@ export class JvProjectDetail extends LitElement {
           ></jv-input>
           <jv-button variant="primary" @click=${() => this.#addComponent()}>Hinzufügen</jv-button>
         </div>
-        ${p.components.length === 0
+        ${(p.components ?? []).length === 0
           ? html`<p style="color:var(--jv-text-muted);">Keine Komponenten.</p>`
           : html`<table>
               <thead>
                 <tr><th>Komponente</th><th>Version</th><th></th></tr>
               </thead>
               <tbody>
-                ${p.components.map(
+                ${(p.components ?? []).map(
                   (c) => html`<tr>
                     <td>${c.component}</td>
                     <td><code>${c.version}</code></td>

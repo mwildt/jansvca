@@ -164,7 +164,7 @@ export class JvProjectList extends LitElement {
                   <a href=${`/projects/${encodeURIComponent(p.id)}`} data-link>${p.name}</a>
                   <div class="meta">
                     <span>${p.id}</span>
-                    <span>${p.components.length} Komponenten</span>
+                    <span>${(p.components ?? []).length} Komponenten</span>
                     ${p.description ? html`<span>${p.description}</span>` : null}
                   </div>
                   <div style="margin-top:8px; display:flex; gap:8px;">
