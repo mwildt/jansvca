@@ -1,8 +1,12 @@
 # Build artifacts
-/data/
+/data
 *.wal
 *.test
-/bin/
+bin/
+
+# Frontend build output (built fresh in the image)
+app/dist/
+app/frontend/node_modules/
 
 # Version control / editor cruft
 .git
