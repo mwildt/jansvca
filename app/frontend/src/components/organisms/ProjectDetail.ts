@@ -89,8 +89,14 @@ export class JvProjectDetail extends LitElement {
     }
     .empty {
       color: var(--jv-text-muted);
-      padding: var(--jv-lg) 0;
+      padding: var(--jv-2xl) 0;
       text-align: center;
+    }
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--jv-border);
+      border-radius: var(--jv-md);
+      background: var(--jv-surface);
     }
     table {
       width: 100%;
@@ -100,15 +106,19 @@ export class JvProjectDetail extends LitElement {
     th,
     td {
       text-align: left;
-      padding: var(--jv-sm) var(--jv-md);
+      padding: var(--jv-md) var(--jv-lg);
       border-bottom: 1px solid var(--jv-border);
     }
     th {
       color: var(--jv-text-muted);
-      font-weight: 500;
-      font-size: 0.74rem;
+      font-weight: 600;
+      font-size: 0.72rem;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.06em;
+      background: var(--jv-surface-alt);
+    }
+    tbody tr {
+      transition: background 0.1s ease;
     }
     tbody tr:last-child td {
       border-bottom: none;
@@ -389,7 +399,7 @@ export class JvProjectDetail extends LitElement {
 
         ${comps.length === 0
           ? html`<div class="empty">Noch keine Komponenten. F\u00fcge eine hinzu oder importiere ein SBOM.</div>`
-          : html`<table>
+          : html`<div class="table-wrap"><table>
               <thead>
                 <tr><th>Komponente</th><th>Version</th><th></th></tr>
               </thead>
@@ -425,7 +435,7 @@ export class JvProjectDetail extends LitElement {
                   </tr>`,
                 )}
               </tbody>
-            </table>`}
+            </table></div>`}
       </jv-section>
 
       <jv-section heading="Matches" .count=${matches.length}>

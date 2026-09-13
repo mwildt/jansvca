@@ -45,11 +45,12 @@ export class JvVulnList extends LitElement {
       padding: var(--jv-lg) var(--jv-xl);
       margin-bottom: var(--jv-md);
       box-shadow: var(--jv-shadow-sm);
-      transition: border-color 0.14s ease, box-shadow 0.14s ease;
+      transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.12s ease;
     }
     .item:hover {
-      border-color: var(--jv-border-strong);
+      border-color: var(--jv-primary);
       box-shadow: var(--jv-shadow-md);
+      transform: translateY(-2px);
     }
     .row {
       display: flex;
@@ -58,10 +59,12 @@ export class JvVulnList extends LitElement {
       gap: var(--jv-md);
     }
     .row a {
-      font-weight: 600;
-      font-size: 1.05rem;
+      font-weight: 700;
+      font-size: 1.1rem;
       color: var(--jv-text);
       text-decoration: none;
+      letter-spacing: -0.01em;
+      transition: color 0.12s ease;
     }
     .row a:hover {
       color: var(--jv-primary);
@@ -70,9 +73,10 @@ export class JvVulnList extends LitElement {
       display: flex;
       gap: var(--jv-lg);
       color: var(--jv-text-muted);
-      font-size: 0.85rem;
-      margin-top: var(--jv-xs);
+      font-size: 0.84rem;
+      margin-top: var(--jv-sm);
       flex-wrap: wrap;
+      align-items: center;
     }
   `;
 

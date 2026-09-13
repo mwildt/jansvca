@@ -24,42 +24,47 @@ export class JvProjectList extends LitElement {
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: var(--jv-md);
+      gap: var(--jv-lg);
     }
     .card {
       display: flex;
       flex-direction: column;
       gap: var(--jv-sm);
-      padding: var(--jv-lg);
+      padding: var(--jv-xl);
       border-radius: var(--jv-md);
       box-shadow: var(--jv-shadow-sm);
     }
     .card .name {
-      font-weight: 600;
-      font-size: 1.05rem;
+      font-weight: 700;
+      font-size: 1.1rem;
       color: var(--jv-text);
       display: flex;
       align-items: center;
       gap: var(--jv-sm);
+      letter-spacing: -0.01em;
     }
     .card .id {
       font-family: var(--jv-font-mono);
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       color: var(--jv-text-muted);
     }
     .card .desc {
       color: var(--jv-text-muted);
       font-size: 0.86rem;
-      min-height: 1.3em;
+      line-height: 1.5;
+      min-height: 2.6em;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
       overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
     .card .footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-top: var(--jv-xs);
+      margin-top: var(--jv-sm);
+      padding-top: var(--jv-sm);
+      border-top: 1px solid var(--jv-border);
     }
     .card .footer .comp {
       display: inline-flex;
@@ -74,10 +79,11 @@ export class JvProjectList extends LitElement {
       border: none;
       color: var(--jv-text-muted);
       cursor: pointer;
-      padding: var(--jv-xs);
+      padding: var(--jv-xs) var(--jv-sm);
       border-radius: var(--jv-sm);
-      font-size: 0.9rem;
+      font-size: 0.95rem;
       line-height: 1;
+      transition: color 0.12s ease, background 0.12s ease;
     }
     .card .footer .del:hover {
       color: var(--jv-danger);

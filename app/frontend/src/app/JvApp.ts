@@ -18,9 +18,11 @@ export class JvApp extends LitElement {
       display: block;
       min-height: 100vh;
       background:
-        radial-gradient(1200px 600px at 100% -10%, rgba(99, 102, 241, 0.12), transparent 60%),
-        radial-gradient(900px 500px at -10% 0%, rgba(34, 197, 94, 0.06), transparent 55%),
+        radial-gradient(1200px 600px at 100% -10%, rgba(99, 102, 241, 0.14), transparent 60%),
+        radial-gradient(900px 500px at -10% 0%, rgba(139, 92, 246, 0.08), transparent 55%),
+        radial-gradient(700px 400px at 50% 110%, rgba(34, 197, 94, 0.05), transparent 60%),
         var(--jv-bg);
+      background-attachment: fixed;
       font-family: var(--jv-font-sans);
       color: var(--jv-text);
     }
@@ -28,14 +30,14 @@ export class JvApp extends LitElement {
       position: sticky;
       top: 0;
       z-index: 50;
-      background: rgba(15, 23, 42, 0.72);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
+      background: rgba(11, 17, 32, 0.72);
+      backdrop-filter: blur(16px) saturate(160%);
+      -webkit-backdrop-filter: blur(16px) saturate(160%);
       border-bottom: 1px solid var(--jv-border);
       padding: 0 var(--jv-2xl);
       display: flex;
       align-items: center;
-      height: 60px;
+      height: 64px;
       gap: var(--jv-xl);
     }
     .brand {
@@ -47,10 +49,10 @@ export class JvApp extends LitElement {
       letter-spacing: -0.02em;
     }
     .brand .mark {
-      width: 26px;
-      height: 26px;
+      width: 28px;
+      height: 28px;
       border-radius: 8px;
-      background: linear-gradient(135deg, var(--jv-primary), #8b5cf6);
+      background: var(--jv-grad-brand);
       box-shadow: 0 6px 16px rgba(99, 102, 241, 0.45);
     }
     .nav {
@@ -65,6 +67,7 @@ export class JvApp extends LitElement {
       padding: var(--jv-sm) var(--jv-md);
       border-radius: var(--jv-sm);
       transition: color 0.12s ease, background 0.12s ease;
+      text-decoration: none;
     }
     .nav a:hover {
       color: var(--jv-text);
@@ -72,7 +75,7 @@ export class JvApp extends LitElement {
     }
     .nav a.active {
       color: var(--jv-text);
-      background: var(--jv-surface-alt);
+      background: var(--jv-primary-soft);
       box-shadow: inset 0 -2px 0 var(--jv-primary);
     }
     .user {
@@ -83,20 +86,22 @@ export class JvApp extends LitElement {
       gap: var(--jv-md);
     }
     .user .avatar {
-      width: 28px;
-      height: 28px;
+      width: 30px;
+      height: 30px;
       border-radius: 999px;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      background: var(--jv-grad-brand);
       color: #fff;
       font-size: 0.8rem;
-      font-weight: 600;
+      font-weight: 700;
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
     }
     .user a {
       color: var(--jv-text-muted);
       text-decoration: none;
+      transition: color 0.12s ease;
     }
     .user a:hover {
       color: var(--jv-text);
@@ -107,7 +112,7 @@ export class JvApp extends LitElement {
       padding: var(--jv-2xl) var(--jv-2xl) var(--jv-2xl);
     }
     .gate {
-      min-height: calc(100vh - 60px);
+      min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -117,6 +122,11 @@ export class JvApp extends LitElement {
       width: 100%;
       max-width: 380px;
       text-align: center;
+      background: var(--jv-surface);
+      border: 1px solid var(--jv-border);
+      border-radius: var(--jv-lg);
+      padding: 36px 32px;
+      box-shadow: var(--jv-shadow-lg);
     }
     .login .brand {
       justify-content: center;
@@ -128,7 +138,7 @@ export class JvApp extends LitElement {
       border-radius: 9px;
     }
     .login h2 {
-      margin: 0 0 var(--jv-sm);
+      margin: 0 0 6px;
       font-size: 1.25rem;
       font-weight: 700;
     }
@@ -138,9 +148,10 @@ export class JvApp extends LitElement {
       margin: 0 0 var(--jv-xl);
     }
     .loading {
-      padding: var(--jv-2xl);
+      min-height: 100vh;
       display: flex;
       justify-content: center;
+      align-items: center;
     }
   `];
 
@@ -181,12 +192,12 @@ export class JvApp extends LitElement {
     const authEnabled = !window.location.search.includes("noauth");
     if (!this.user.authenticated && authEnabled) {
       return html`<div class="gate">
-        <jv-card class="login">
+        <form class="login" @submit=${this.#login}>
           <div class="brand"><span class="mark"></span><span>jansvca</span></div>
           <h2>Anmeldung</h2>
           <p>Melde dich über den OAuth2-Provider an.</p>
-          <jv-button variant="primary" @click=${this.#login}>Anmelden</jv-button>
-        </jv-card>
+          <jv-button variant="primary" block @click=${this.#login}>Anmelden</jv-button>
+        </form>
       </div>`;
     }
     return html`

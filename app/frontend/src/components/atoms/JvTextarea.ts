@@ -19,27 +19,30 @@ export class JvTextarea extends LitElement {
     textarea {
       width: 100%;
       min-height: 96px;
-      padding: 9px var(--jv-md);
+      padding: 11px var(--jv-md);
       border-radius: var(--jv-sm);
       border: 1px solid var(--jv-border);
       background: var(--jv-surface-2);
       color: var(--jv-text);
-      font-size: 0.88rem;
+      font-size: 0.86rem;
       font-family: var(--jv-font-mono);
       resize: vertical;
       box-sizing: border-box;
-      transition: border-color 0.14s ease, box-shadow 0.14s ease;
+      transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+      line-height: 1.5;
     }
     textarea::placeholder {
       color: #475569;
     }
     textarea:hover {
       border-color: var(--jv-border-strong);
+      background: var(--jv-surface-alt);
     }
     textarea:focus {
       outline: none;
       border-color: var(--jv-primary);
       box-shadow: var(--jv-ring);
+      background: var(--jv-surface-alt);
     }
   `;
 

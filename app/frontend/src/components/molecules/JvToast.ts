@@ -25,14 +25,18 @@ export class JvToast extends LitElement {
       border-radius: var(--jv-md);
       box-shadow: var(--jv-shadow-lg);
       font-size: 0.88rem;
-      max-width: 360px;
+      max-width: 380px;
       border-left: 3px solid var(--jv-primary);
+      animation: jv-toast-in 0.18s ease;
     }
     .toast.error {
       border-left-color: var(--jv-danger);
     }
     .toast.success {
       border-left-color: var(--jv-success);
+    }
+    @keyframes jv-toast-in {
+      from { opacity: 0; transform: translateX(12px); }
     }
   `;
 

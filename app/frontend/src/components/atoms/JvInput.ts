@@ -18,14 +18,14 @@ export class JvInput extends LitElement {
     }
     input {
       width: 100%;
-      padding: 9px var(--jv-md);
+      padding: 11px var(--jv-md);
       border-radius: var(--jv-sm);
       border: 1px solid var(--jv-border);
       background: var(--jv-surface-2);
       color: var(--jv-text);
       font-size: 0.9rem;
       font-family: inherit;
-      transition: border-color 0.14s ease, box-shadow 0.14s ease;
+      transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
       box-sizing: border-box;
     }
     input::placeholder {
@@ -33,11 +33,13 @@ export class JvInput extends LitElement {
     }
     input:hover {
       border-color: var(--jv-border-strong);
+      background: var(--jv-surface-alt);
     }
     input:focus {
       outline: none;
       border-color: var(--jv-primary);
       box-shadow: var(--jv-ring);
+      background: var(--jv-surface-alt);
     }
   `;
 

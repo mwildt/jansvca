@@ -13,33 +13,45 @@ export class JvConfirmDialog extends LitElement {
       position: fixed;
       inset: 0;
       background: rgba(2, 6, 23, 0.7);
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 100;
+      animation: jv-fade 0.14s ease;
     }
     .dialog {
       background: var(--jv-surface);
-      border: 1px solid var(--jv-border);
+      border: 1px solid var(--jv-border-strong);
       border-radius: var(--jv-lg);
       padding: var(--jv-xl);
       max-width: 420px;
+      width: calc(100% - 48px);
       box-shadow: var(--jv-shadow-lg);
+      animation: jv-pop 0.16s ease;
     }
     h3 {
       margin: 0 0 var(--jv-md);
-      font-size: 1.1rem;
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
     }
     p {
       margin: 0 0 var(--jv-xl);
       color: var(--jv-text-muted);
+      line-height: 1.5;
     }
     .actions {
       display: flex;
       justify-content: flex-end;
       gap: var(--jv-sm);
+    }
+    @keyframes jv-fade {
+      from { opacity: 0; }
+    }
+    @keyframes jv-pop {
+      from { opacity: 0; transform: translateY(8px) scale(0.98); }
     }
   `;
 

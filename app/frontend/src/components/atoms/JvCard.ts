@@ -23,15 +23,15 @@ export class JvCard extends LitElement {
     }
     :host([interactive]) {
       cursor: pointer;
-      transition: border-color 0.14s ease, transform 0.1s ease, box-shadow 0.14s ease;
+      transition: border-color 0.16s ease, transform 0.12s ease, box-shadow 0.16s ease;
     }
     :host([interactive]:hover) {
-      border-color: var(--jv-border-strong);
-      transform: translateY(-2px);
-      box-shadow: var(--jv-shadow-md);
+      border-color: var(--jv-primary);
+      transform: translateY(-3px);
+      box-shadow: var(--jv-shadow-lg);
     }
     :host([interactive]:active) {
-      transform: translateY(0);
+      transform: translateY(-1px);
     }
   `;
 

@@ -19,9 +19,9 @@ export const tokens = {
     warn: "#f59e0b",
   },
   radius: {
-    sm: "8px",
-    md: "12px",
-    lg: "18px",
+    sm: "10px",
+    md: "14px",
+    lg: "20px",
   },
   space: {
     xs: "4px",
@@ -53,14 +53,17 @@ const tokenVars = `
     --jv-primary: #6366f1;
     --jv-primary-hover: #4f46e5;
     --jv-primary-soft: rgba(99, 102, 241, 0.18);
+    --jv-accent: #8b5cf6;
     --jv-danger: #ef4444;
     --jv-danger-hover: #dc2626;
     --jv-danger-soft: rgba(239, 68, 68, 0.18);
     --jv-success: #22c55e;
+    --jv-success-soft: rgba(34, 197, 94, 0.16);
     --jv-warn: #f59e0b;
-    --jv-radius-sm: 8px;
-    --jv-radius-md: 12px;
-    --jv-radius-lg: 18px;
+    --jv-warn-soft: rgba(245, 158, 11, 0.16);
+    --jv-radius-sm: 10px;
+    --jv-radius-md: 14px;
+    --jv-radius-lg: 20px;
     --jv-space-xs: 4px;
     --jv-space-sm: 8px;
     --jv-space-md: 12px;
@@ -72,7 +75,9 @@ const tokenVars = `
     --jv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --jv-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
     --jv-shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.55);
+    --jv-shadow-primary: 0 6px 16px rgba(99, 102, 241, 0.35);
     --jv-ring: 0 0 0 3px var(--jv-primary-soft);
+    --jv-grad-brand: linear-gradient(135deg, var(--jv-primary), var(--jv-accent));
 `;
 
 // globalTokens is injected into the document head so the custom properties are

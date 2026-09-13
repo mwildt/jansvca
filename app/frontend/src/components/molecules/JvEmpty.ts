@@ -11,17 +11,21 @@ export class JvEmpty extends LitElement {
       padding: var(--jv-2xl);
       color: var(--jv-text-muted);
       border: 1px dashed var(--jv-border-strong);
-      border-radius: var(--jv-md);
+      border-radius: var(--jv-lg);
       background: var(--jv-surface-2);
     }
     .title {
-      font-weight: 600;
+      font-weight: 700;
       color: var(--jv-text);
-      margin-bottom: var(--jv-xs);
-      font-size: 1rem;
+      margin-bottom: var(--jv-sm);
+      font-size: 1.05rem;
+      letter-spacing: -0.01em;
     }
     .actions {
-      margin-top: var(--jv-lg);
+      margin-top: var(--jv-xl);
+      display: flex;
+      gap: var(--jv-sm);
+      justify-content: center;
     }
   `;
 

@@ -12,7 +12,7 @@ export class JvBadge extends LitElement {
     span {
       display: inline-flex;
       align-items: center;
-      padding: 2px var(--jv-sm);
+      padding: 3px var(--jv-sm);
       border-radius: 999px;
       font-size: 0.74rem;
       font-weight: 600;
@@ -21,24 +21,25 @@ export class JvBadge extends LitElement {
       color: var(--jv-text-muted);
       border: 1px solid var(--jv-border);
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
     :host([tone="success"]) span {
-      background: rgba(34, 197, 94, 0.14);
+      background: var(--jv-success-soft);
       color: #4ade80;
       border-color: rgba(34, 197, 94, 0.3);
     }
     :host([tone="warn"]) span {
-      background: rgba(245, 158, 11, 0.14);
+      background: var(--jv-warn-soft);
       color: #fbbf24;
       border-color: rgba(245, 158, 11, 0.3);
     }
     :host([tone="danger"]) span {
-      background: rgba(239, 68, 68, 0.14);
+      background: var(--jv-danger-soft);
       color: #f87171;
       border-color: rgba(239, 68, 68, 0.3);
     }
     :host([tone="info"]) span {
-      background: rgba(99, 102, 241, 0.14);
+      background: var(--jv-primary-soft);
       color: #a5b4fc;
       border-color: rgba(99, 102, 241, 0.3);
     }

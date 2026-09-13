@@ -16,16 +16,18 @@ export class JvPageHeader extends LitElement {
     }
     h1 {
       margin: 0;
-      font-size: 1.6rem;
+      font-size: 1.7rem;
       letter-spacing: -0.02em;
       color: var(--jv-text);
       font-weight: 700;
+      line-height: 1.2;
     }
     .sub {
       color: var(--jv-text-muted);
       font-size: 0.9rem;
-      margin-top: var(--jv-xs);
+      margin-top: var(--jv-sm);
       max-width: 70ch;
+      line-height: 1.5;
     }
     .actions {
       display: flex;

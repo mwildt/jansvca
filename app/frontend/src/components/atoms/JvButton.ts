@@ -8,22 +8,29 @@ export class JvButton extends LitElement {
     :host {
       display: inline-flex;
     }
+    :host([block]) {
+      display: flex;
+      width: 100%;
+    }
     button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: var(--jv-sm);
-      padding: 9px var(--jv-lg);
+      padding: 11px var(--jv-lg);
       border-radius: var(--jv-sm);
       border: 1px solid var(--jv-border);
       background: var(--jv-surface-alt);
       color: var(--jv-text);
-      font-size: 0.88rem;
-      font-weight: 500;
+      font-size: 0.9rem;
+      font-weight: 600;
       font-family: inherit;
       cursor: pointer;
       transition: background 0.14s ease, border-color 0.14s ease, transform 0.06s ease, box-shadow 0.14s ease;
       white-space: nowrap;
+    }
+    :host([block]) button {
+      width: 100%;
     }
     button:hover {
       background: var(--jv-surface);
@@ -36,7 +43,7 @@ export class JvButton extends LitElement {
       background: var(--jv-primary);
       border-color: transparent;
       color: #fff;
-      box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
+      box-shadow: var(--jv-shadow-primary);
     }
     :host([variant="primary"]) button:hover {
       background: var(--jv-primary-hover);
@@ -69,6 +76,7 @@ export class JvButton extends LitElement {
 
   @property({ reflect: true }) variant: "" | "primary" | "danger" | "ghost" = "";
   @property({ type: Boolean }) disabled = false;
+  @property({ type: Boolean, reflect: true }) block = false;
   @property() type: "button" | "submit" = "button";
 
   render() {

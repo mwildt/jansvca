@@ -17,6 +17,12 @@ export class JvTable<T = unknown> extends LitElement {
       font-family: var(--jv-font-sans);
       color: var(--jv-text);
     }
+    .wrap {
+      overflow-x: auto;
+      border: 1px solid var(--jv-border);
+      border-radius: var(--jv-md);
+      background: var(--jv-surface);
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -25,15 +31,22 @@ export class JvTable<T = unknown> extends LitElement {
     th,
     td {
       text-align: left;
-      padding: var(--jv-sm) var(--jv-md);
+      padding: var(--jv-md) var(--jv-lg);
       border-bottom: 1px solid var(--jv-border);
     }
     th {
       color: var(--jv-text-muted);
-      font-weight: 500;
-      font-size: 0.74rem;
+      font-weight: 600;
+      font-size: 0.72rem;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.06em;
+      background: var(--jv-surface-alt);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    tbody tr {
+      transition: background 0.1s ease;
     }
     tbody tr:last-child td {
       border-bottom: none;
@@ -43,7 +56,7 @@ export class JvTable<T = unknown> extends LitElement {
     }
     .empty {
       color: var(--jv-text-muted);
-      padding: var(--jv-lg) 0;
+      padding: var(--jv-2xl) 0;
       text-align: center;
     }
   `;
@@ -57,7 +70,7 @@ export class JvTable<T = unknown> extends LitElement {
     if (this.rows.length === 0 && this.emptyMessage) {
       return html`<div class="empty">${this.emptyMessage}</div>`;
     }
-    return html`<table>
+    return html`<div class="wrap"><table>
       <thead>
         <tr>
           ${this.columns.map((c) => html`<th>${c.label}</th>`)}
@@ -72,7 +85,7 @@ export class JvTable<T = unknown> extends LitElement {
           </tr>`,
         )}
       </tbody>
-    </table>`;
+    </table></div>`;
   }
 }
 
