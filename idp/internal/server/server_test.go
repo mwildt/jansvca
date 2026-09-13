@@ -219,6 +219,70 @@ func TestTokenFormClientAuth(t *testing.T) {
 	}
 }
 
+func TestAuthorizeSetsLastUserCookie(t *testing.T) {
+	srv := New(newTestStore(t))
+	h := srv.Handler()
+
+	form := url.Values{}
+	form.Set("username", "admin")
+	form.Set("password", "admin")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost,
+		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback&state=xyz",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+
+	var cookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "jansvca_lastuser" {
+			cookie = c
+			break
+		}
+	}
+	if cookie == nil {
+		t.Fatalf("jansvca_lastuser cookie not set; cookies=%v", rec.Result().Cookies())
+	}
+	if cookie.Value != "admin" {
+		t.Fatalf("cookie value=%q, want admin", cookie.Value)
+	}
+	if cookie.MaxAge <= 0 {
+		t.Fatalf("cookie MaxAge=%d, want long-lived", cookie.MaxAge)
+	}
+}
+
+func TestAuthorizePrefillsUsernameFromCookie(t *testing.T) {
+	srv := New(newTestStore(t))
+	h := srv.Handler()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet,
+		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback&state=xyz", nil)
+	req.AddCookie(&http.Cookie{Name: "jansvca_lastuser", Value: "admin"})
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `value="admin"`) {
+		t.Fatalf("username not prefilled from cookie: %s", rec.Body.String())
+	}
+}
+
+func TestAuthorizeNoCookieDoesNotPrefill(t *testing.T) {
+	srv := New(newTestStore(t))
+	h := srv.Handler()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet,
+		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback&state=xyz", nil)
+	h.ServeHTTP(rec, req)
+
+	if strings.Contains(rec.Body.String(), `value="admin"`) {
+		t.Fatalf("username should not be prefilled without cookie: %s", rec.Body.String())
+	}
+}
+
 func getQuery(t *testing.T, raw, key string) string {
 	t.Helper()
 	u, err := url.Parse(raw)
