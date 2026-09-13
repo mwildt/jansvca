@@ -8,16 +8,17 @@ export class JvEmpty extends LitElement {
     :host {
       display: block;
       text-align: center;
-      padding: var(--jv-xl);
+      padding: var(--jv-2xl);
       color: var(--jv-text-muted);
-      border: 1px dashed var(--jv-border);
+      border: 1px dashed var(--jv-border-strong);
       border-radius: var(--jv-md);
-      background: var(--jv-surface-alt);
+      background: var(--jv-surface-2);
     }
     .title {
       font-weight: 600;
       color: var(--jv-text);
       margin-bottom: var(--jv-xs);
+      font-size: 1rem;
     }
     .actions {
       margin-top: var(--jv-lg);

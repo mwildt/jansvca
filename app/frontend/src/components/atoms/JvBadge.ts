@@ -14,32 +14,33 @@ export class JvBadge extends LitElement {
       align-items: center;
       padding: 2px var(--jv-sm);
       border-radius: 999px;
-      font-size: 0.75rem;
+      font-size: 0.74rem;
       font-weight: 600;
-      line-height: 1.4;
+      line-height: 1.5;
       background: var(--jv-surface-alt);
       color: var(--jv-text-muted);
       border: 1px solid var(--jv-border);
+      font-variant-numeric: tabular-nums;
     }
     :host([tone="success"]) span {
-      background: #dcfce7;
-      color: #166534;
-      border-color: #bbf7d0;
+      background: rgba(34, 197, 94, 0.14);
+      color: #4ade80;
+      border-color: rgba(34, 197, 94, 0.3);
     }
     :host([tone="warn"]) span {
-      background: #fef3c7;
-      color: #92400e;
-      border-color: #fde68a;
+      background: rgba(245, 158, 11, 0.14);
+      color: #fbbf24;
+      border-color: rgba(245, 158, 11, 0.3);
     }
     :host([tone="danger"]) span {
-      background: #fee2e2;
-      color: #991b1b;
-      border-color: #fecaca;
+      background: rgba(239, 68, 68, 0.14);
+      color: #f87171;
+      border-color: rgba(239, 68, 68, 0.3);
     }
     :host([tone="info"]) span {
-      background: #dbeafe;
-      color: #1e40af;
-      border-color: #bfdbfe;
+      background: rgba(99, 102, 241, 0.14);
+      color: #a5b4fc;
+      border-color: rgba(99, 102, 241, 0.3);
     }
   `;
 

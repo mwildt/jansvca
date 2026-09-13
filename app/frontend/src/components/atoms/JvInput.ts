@@ -10,24 +10,34 @@ export class JvInput extends LitElement {
     }
     label {
       display: block;
-      font-size: 0.8rem;
+      font-size: 0.78rem;
+      font-weight: 500;
       color: var(--jv-text-muted);
       margin-bottom: var(--jv-xs);
+      letter-spacing: 0.01em;
     }
     input {
       width: 100%;
-      padding: var(--jv-sm) var(--jv-md);
+      padding: 9px var(--jv-md);
       border-radius: var(--jv-sm);
       border: 1px solid var(--jv-border);
-      background: var(--jv-surface);
+      background: var(--jv-surface-2);
       color: var(--jv-text);
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       font-family: inherit;
+      transition: border-color 0.14s ease, box-shadow 0.14s ease;
+      box-sizing: border-box;
+    }
+    input::placeholder {
+      color: #475569;
+    }
+    input:hover {
+      border-color: var(--jv-border-strong);
     }
     input:focus {
       outline: none;
       border-color: var(--jv-primary);
-      box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.15);
+      box-shadow: var(--jv-ring);
     }
   `;
 

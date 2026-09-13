@@ -7,10 +7,10 @@ import { toast } from "../molecules/JvToast";
 import "../molecules/JvEmpty";
 import "../molecules/JvConfirmDialog";
 import "../atoms/JvButton";
-import "../atoms/JvInput";
 import "../atoms/JvBadge";
 
-// Organism: list of projects plus a create form.
+// Organism: project overview list. Creation happens on the dedicated
+// /projects/new page so this view stays a focused list.
 @customElement("jv-project-list")
 export class JvProjectList extends LitElement {
   static styles = css`
@@ -19,50 +19,117 @@ export class JvProjectList extends LitElement {
     }
     .header {
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       justify-content: space-between;
+      gap: var(--jv-lg);
       margin-bottom: var(--jv-xl);
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 1.6rem;
+      letter-spacing: -0.02em;
+    }
+    .header .sub {
+      color: var(--jv-text-muted);
+      font-size: 0.9rem;
+      margin-top: var(--jv-xs);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: var(--jv-md);
     }
     .card {
       background: var(--jv-surface);
       border: 1px solid var(--jv-border);
       border-radius: var(--jv-md);
-      padding: var(--jv-lg) var(--jv-xl);
-      margin-bottom: var(--jv-md);
+      padding: var(--jv-lg);
+      box-shadow: var(--jv-shadow-sm);
+      cursor: pointer;
+      transition: border-color 0.14s ease, transform 0.1s ease, box-shadow 0.14s ease;
+      display: flex;
+      flex-direction: column;
+      gap: var(--jv-sm);
     }
-    .card a {
+    .card:hover {
+      border-color: var(--jv-border-strong);
+      transform: translateY(-2px);
+      box-shadow: var(--jv-shadow-md);
+    }
+    .card .name {
       font-weight: 600;
       font-size: 1.05rem;
-    }
-    .meta {
+      color: var(--jv-text);
       display: flex;
-      gap: var(--jv-lg);
+      align-items: center;
+      gap: var(--jv-sm);
+    }
+    .card .id {
+      font-family: var(--jv-font-mono);
+      font-size: 0.8rem;
       color: var(--jv-text-muted);
-      font-size: 0.85rem;
+    }
+    .card .desc {
+      color: var(--jv-text-muted);
+      font-size: 0.86rem;
+      min-height: 1.3em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .card .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       margin-top: var(--jv-xs);
     }
-    .form {
-      display: grid;
-      grid-template-columns: 160px 1fr 2fr auto;
+    .card .footer .comp {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--jv-xs);
+      color: var(--jv-text-muted);
+      font-size: 0.8rem;
+    }
+    .card .footer .del {
+      appearance: none;
+      background: transparent;
+      border: none;
+      color: var(--jv-text-muted);
+      cursor: pointer;
+      padding: var(--jv-xs);
+      border-radius: var(--jv-sm);
+      font-size: 0.9rem;
+      line-height: 1;
+    }
+    .card .footer .del:hover {
+      color: var(--jv-danger);
+      background: var(--jv-danger-soft);
+    }
+    .stats {
+      display: flex;
       gap: var(--jv-md);
-      align-items: end;
-      background: var(--jv-surface-alt);
-      border: 1px solid var(--jv-border);
-      border-radius: var(--jv-md);
-      padding: var(--jv-lg) var(--jv-xl);
       margin-bottom: var(--jv-xl);
     }
-    @media (max-width: 760px) {
-      .form {
-        grid-template-columns: 1fr;
-      }
+    .stat {
+      background: var(--jv-surface);
+      border: 1px solid var(--jv-border);
+      border-radius: var(--jv-md);
+      padding: var(--jv-md) var(--jv-lg);
+      min-width: 140px;
+    }
+    .stat .num {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--jv-text);
+    }
+    .stat .label {
+      color: var(--jv-text-muted);
+      font-size: 0.78rem;
     }
   `;
 
   @state() private projects: ProjectView[] = [];
   @state() private loading = true;
-  @state() private form = { id: "", name: "", description: "" };
-  @state() private submitting = false;
   @state() private deleteId: string | null = null;
 
   connectedCallback(): void {
@@ -81,28 +148,6 @@ export class JvProjectList extends LitElement {
     }
   }
 
-  async #submit(): Promise<void> {
-    if (!this.form.id || !this.form.name) {
-      toast("ID und Name sind erforderlich", "error");
-      return;
-    }
-    this.submitting = true;
-    try {
-      await api.createProject({
-        id: this.form.id,
-        name: this.form.name,
-        description: this.form.description,
-      });
-      this.form = { id: "", name: "", description: "" };
-      await this.#load();
-      toast("Projekt angelegt", "success");
-    } catch (e) {
-      toast((e as Error).message, "error");
-    } finally {
-      this.submitting = false;
-    }
-  }
-
   async #confirmDelete(): Promise<void> {
     if (!this.deleteId) return;
     const id = this.deleteId;
@@ -110,83 +155,73 @@ export class JvProjectList extends LitElement {
     try {
       await api.deleteProject(id);
       await this.#load();
-      toast("Projekt gelöscht", "success");
+      toast("Projekt gel\u00f6scht", "success");
     } catch (e) {
       toast((e as Error).message, "error");
     }
   }
 
   render() {
-    return html`<div class="header">
-        <h2>Projekte</h2>
-        <jv-button variant="primary" @click=${() => this.#submit()} ?disabled=${this.submitting}
-          >Projekt anlegen</jv-button
-        >
+    const totalComponents = this.projects.reduce((n, p) => n + (p.components?.length ?? 0), 0);
+    return html`
+      <div class="header">
+        <div>
+          <h1>Projekte</h1>
+          <div class="sub">Verwalte Projekte und ihre eingesetzten Komponenten.</div>
+        </div>
+        <jv-button variant="primary" @click=${() => navigate("/projects/new")}>+ Neues Projekt</jv-button>
       </div>
 
-      <div class="form">
-        <jv-input
-          label="ID"
-          name="id"
-          placeholder="z.B. app-backend"
-          .value=${this.form.id}
-          @change=${(e: CustomEvent<{ value: string }>) => (this.form.id = e.detail.value)}
-        ></jv-input>
-        <jv-input
-          label="Name"
-          name="name"
-          placeholder="Projektname"
-          .value=${this.form.name}
-          @change=${(e: CustomEvent<{ value: string }>) => (this.form.name = e.detail.value)}
-        ></jv-input>
-        <jv-input
-          label="Beschreibung"
-          name="description"
-          placeholder="optional"
-          .value=${this.form.description}
-          @change=${(e: CustomEvent<{ value: string }>) => (this.form.description = e.detail.value)}
-        ></jv-input>
-        <jv-button variant="primary" @click=${() => this.#submit()} ?disabled=${this.submitting}
-          >Anlegen</jv-button
-        >
-      </div>
+      ${!this.loading && this.projects.length > 0
+        ? html`<div class="stats">
+            <div class="stat"><div class="num">${this.projects.length}</div><div class="label">Projekte</div></div>
+            <div class="stat"><div class="num">${totalComponents}</div><div class="label">Komponenten</div></div>
+          </div>`
+        : null}
 
       ${this.loading
-        ? html`<p>Lädt…</p>`
+        ? html`<p>L\u00e4dt\u2026</p>`
         : this.projects.length === 0
           ? html`<jv-empty
               heading="Keine Projekte"
-              message="Lege dein erstes Projekt über das Formular an."
-            ></jv-empty>`
-          : this.projects.map(
-              (p) => html`
-                <div class="card">
-                  <a href=${`/projects/${encodeURIComponent(p.id)}`} data-link>${p.name}</a>
-                  <div class="meta">
-                    <span>${p.id}</span>
-                    <span>${(p.components ?? []).length} Komponenten</span>
-                    ${p.description ? html`<span>${p.description}</span>` : null}
+              message="Lege dein erstes Projekt an, um Komponenten und Schwachstellen zu tracken."
+            >
+              <jv-button variant="primary" @click=${() => navigate("/projects/new")}>Projekt anlegen</jv-button>
+            </jv-empty>`
+          : html`<div class="grid">
+              ${this.projects.map(
+                (p) => html`
+                  <div class="card" @click=${() => navigate(`/projects/${encodeURIComponent(p.id)}`)}>
+                    <div class="name">${p.name}</div>
+                    <div class="id">${p.id}</div>
+                    <div class="desc">${p.description || "Keine Beschreibung"}</div>
+                    <div class="footer">
+                      <span class="comp">
+                        <jv-badge tone="info">${(p.components ?? []).length}</jv-badge>
+                        Komponenten
+                      </span>
+                      <button
+                        class="del"
+                        title="L\u00f6schen"
+                        @click=${(e: Event) => {
+                          e.stopPropagation();
+                          this.deleteId = p.id;
+                        }}
+                      >\u2715</button>
+                    </div>
                   </div>
-                  <div style="margin-top:8px; display:flex; gap:8px;">
-                    <jv-button
-                      @click=${() => navigate(`/projects/${encodeURIComponent(p.id)}`)}
-                      >Öffnen</jv-button
-                    >
-                    <jv-button variant="danger" @click=${() => (this.deleteId = p.id)}
-                      >Löschen</jv-button
-                    >
-                  </div>
-                </div>
-              `,
-            )}
+                `,
+              )}
+            </div>`}
 
       <jv-confirm-dialog
         .open=${this.deleteId !== null}
-        heading="Projekt löschen?"
+        heading="Projekt l\u00f6schen?"
         message="Das Projekt wird soft-deleted und nicht mehr angezeigt."
         @confirm=${() => this.#confirmDelete()}
         @cancel=${() => (this.deleteId = null)}
-      ></jv-confirm-dialog>`;
+      ></jv-confirm-dialog>
+    `;
   }
 }
 

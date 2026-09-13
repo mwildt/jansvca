@@ -11,6 +11,11 @@ export class JvDashboard extends LitElement {
     :host {
       display: block;
     }
+    h1 {
+      margin: 0 0 var(--jv-sm);
+      font-size: 1.7rem;
+      letter-spacing: -0.02em;
+    }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -23,9 +28,13 @@ export class JvDashboard extends LitElement {
       border-radius: var(--jv-md);
       padding: var(--jv-lg) var(--jv-xl);
       cursor: pointer;
+      transition: border-color 0.14s ease, transform 0.1s ease, box-shadow 0.14s ease;
+      box-shadow: var(--jv-shadow-sm);
     }
     .stat:hover {
       border-color: var(--jv-primary);
+      transform: translateY(-2px);
+      box-shadow: var(--jv-shadow-md);
     }
     .num {
       font-size: 2rem;
@@ -40,6 +49,7 @@ export class JvDashboard extends LitElement {
       color: var(--jv-text-muted);
       max-width: 60ch;
       margin-bottom: var(--jv-xl);
+      line-height: 1.6;
     }
   `;
 
@@ -67,7 +77,7 @@ export class JvDashboard extends LitElement {
 
   render() {
     return html`
-      <h2>Übersicht</h2>
+      <h1>Übersicht</h1>
       <p class="intro">
         Schwachstellen-Tracking: erfasse Projekte mit ihren Komponenten und
         Schwachstellen mit Version-Ranges. jansvca ermittelt, welche

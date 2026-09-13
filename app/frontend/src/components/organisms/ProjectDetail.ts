@@ -1,4 +1,4 @@
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { api } from "../../shared/api/client";
 import type { Match, ProjectView } from "../../shared/api/types";
@@ -11,38 +11,106 @@ import "../atoms/JvTextarea";
 import "../atoms/JvBadge";
 import { cvssTone } from "../atoms/JvBadge";
 
-// Organism: project detail with components, matches and edit/delete actions.
+// Organism: project detail with components, matches, SBOM import and edit.
 @customElement("jv-project-detail")
 export class JvProjectDetail extends LitElement {
   static styles = css`
     :host {
       display: block;
     }
+    .crumb a {
+      color: var(--jv-text-muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+    .crumb a:hover {
+      color: var(--jv-text);
+    }
     .top {
       display: flex;
-      align-items: baseline;
+      align-items: flex-start;
       justify-content: space-between;
       gap: var(--jv-lg);
+      margin: var(--jv-md) 0 var(--jv-xl);
+    }
+    .title h1 {
+      margin: 0;
+      font-size: 1.6rem;
+      letter-spacing: -0.02em;
+    }
+    .title .id {
+      color: var(--jv-text-muted);
+      font-family: var(--jv-font-mono);
+      font-size: 0.85rem;
+      margin-top: var(--jv-xs);
+    }
+    .top-actions {
+      display: flex;
+      gap: var(--jv-sm);
+      align-items: center;
+    }
+    .desc {
+      color: var(--jv-text-muted);
+      max-width: 70ch;
+      margin-bottom: var(--jv-xl);
+      line-height: 1.5;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: var(--jv-md);
       margin-bottom: var(--jv-xl);
     }
-    .id {
+    .stat {
+      background: var(--jv-surface);
+      border: 1px solid var(--jv-border);
+      border-radius: var(--jv-md);
+      padding: var(--jv-md) var(--jv-lg);
+    }
+    .stat .num {
+      font-size: 1.6rem;
+      font-weight: 700;
+    }
+    .stat.danger .num {
+      color: var(--jv-danger);
+    }
+    .stat.warn .num {
+      color: var(--jv-warn);
+    }
+    .stat .label {
       color: var(--jv-text-muted);
-      font-size: 0.9rem;
+      font-size: 0.78rem;
+      margin-top: var(--jv-xs);
     }
     .section {
       background: var(--jv-surface);
       border: 1px solid var(--jv-border);
-      border-radius: var(--jv-md);
-      padding: var(--jv-lg) var(--jv-xl);
+      border-radius: var(--jv-lg);
+      padding: var(--jv-xl);
       margin-bottom: var(--jv-xl);
+      box-shadow: var(--jv-shadow-sm);
     }
-    h3 {
-      margin: 0 0 var(--jv-md);
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--jv-lg);
+    }
+    .section-head h2 {
+      margin: 0;
+      font-size: 1.15rem;
+      letter-spacing: -0.01em;
+    }
+    .section-head .count {
+      color: var(--jv-text-muted);
+      font-weight: 500;
+      font-size: 0.85rem;
+      margin-left: var(--jv-sm);
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.92rem;
+      font-size: 0.88rem;
     }
     th, td {
       text-align: left;
@@ -51,57 +119,43 @@ export class JvProjectDetail extends LitElement {
     }
     th {
       color: var(--jv-text-muted);
-      font-weight: 600;
-      font-size: 0.8rem;
+      font-weight: 500;
+      font-size: 0.74rem;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.05em;
+    }
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+    tbody tr:hover {
+      background: var(--jv-surface-alt);
+    }
+    td code {
+      font-family: var(--jv-font-mono);
+      font-size: 0.85rem;
+      color: var(--jv-text-muted);
     }
     .row-actions {
       display: flex;
       gap: var(--jv-xs);
+      justify-content: flex-end;
     }
-    .desc {
-      color: var(--jv-text-muted);
-      margin-bottom: var(--jv-md);
-    }
-    .form {
+    .add-row {
       display: grid;
-      grid-template-columns: 2fr 1fr auto;
+      grid-template-columns: 1fr 160px auto;
       gap: var(--jv-md);
       align-items: end;
+      margin-bottom: var(--jv-lg);
     }
-    @media (max-width: 760px) {
-      .form {
+    @media (max-width: 640px) {
+      .add-row {
         grid-template-columns: 1fr;
       }
     }
-    .match-empty {
+    .empty {
       color: var(--jv-text-muted);
-      padding: var(--jv-md) 0;
-    }
-    .cvss {
-      font-variant-numeric: tabular-nums;
-      font-weight: 600;
-    }
-    .sbom-row {
-      margin-top: var(--jv-md);
-    }
-    .sbom {
-      margin-top: var(--jv-md);
-      padding: var(--jv-md);
-      border: 1px dashed var(--jv-border);
-      border-radius: var(--jv-md);
-      display: grid;
-      gap: var(--jv-sm);
-    }
-    .sbom .hint {
-      margin: 0;
-      color: var(--jv-text-muted);
-      font-size: 0.85rem;
-    }
-    .sbom-actions {
-      display: flex;
-      gap: var(--jv-sm);
+      padding: var(--jv-lg) 0;
+      text-align: center;
     }
     .ver-edit {
       display: flex;
@@ -109,18 +163,49 @@ export class JvProjectDetail extends LitElement {
       gap: var(--jv-xs);
     }
     .ver-input {
-      padding: var(--jv-xs) var(--jv-sm);
+      padding: 6px var(--jv-sm);
       border-radius: var(--jv-sm);
-      border: 1px solid var(--jv-border);
-      background: var(--jv-surface);
+      border: 1px solid var(--jv-border-strong);
+      background: var(--jv-surface-2);
       color: var(--jv-text);
-      font-family: inherit;
-      font-size: 0.9rem;
+      font-family: var(--jv-font-mono);
+      font-size: 0.85rem;
       max-width: 9rem;
     }
     .ver-input:focus {
       outline: none;
       border-color: var(--jv-primary);
+      box-shadow: var(--jv-ring);
+    }
+    .sbom {
+      margin-top: var(--jv-lg);
+      padding: var(--jv-lg);
+      border: 1px dashed var(--jv-border-strong);
+      border-radius: var(--jv-md);
+      background: var(--jv-surface-2);
+      display: grid;
+      gap: var(--jv-md);
+    }
+    .sbom .hint {
+      margin: 0;
+      color: var(--jv-text-muted);
+      font-size: 0.82rem;
+    }
+    .sbom .file {
+      font-size: 0.85rem;
+      color: var(--jv-text-muted);
+    }
+    .sbom-actions {
+      display: flex;
+      gap: var(--jv-sm);
+    }
+    .edit-grid {
+      display: grid;
+      gap: var(--jv-lg);
+      max-width: 560px;
+    }
+    .muted {
+      color: var(--jv-text-muted);
     }
   `;
 
@@ -199,7 +284,7 @@ export class JvProjectDetail extends LitElement {
       });
       this.compForm = { component: "", version: "" };
       await this.#load();
-      toast("Komponente hinzugefügt", "success");
+      toast("Komponente hinzugef\u00fcgt", "success");
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -279,7 +364,7 @@ export class JvProjectDetail extends LitElement {
     this.deleteOpen = false;
     try {
       await api.deleteProject(this.projectId);
-      toast("Projekt gelöscht", "success");
+      toast("Projekt gel\u00f6scht", "success");
       navigate("/projects");
     } catch (e) {
       toast((e as Error).message, "error");
@@ -287,43 +372,72 @@ export class JvProjectDetail extends LitElement {
   }
 
   render() {
-    if (this.loading) return html`<p>Lädt…</p>`;
+    if (this.loading) return html`<p>L\u00e4dt\u2026</p>`;
     if (!this.project) return html`<p>Projekt nicht gefunden.</p>`;
     const p = this.project;
+    const comps = p.components ?? [];
+    const matches = this.matchResults ?? [];
+    const highCount = matches.filter((m) => m.cvss >= 7).length;
+    const maxCvss = matches.reduce((mx, m) => Math.max(mx, m.cvss), 0);
+
     return html`
+      <div class="crumb"><a href="/projects" data-link>\u2190 Projekte</a></div>
+
       <div class="top">
-        <div>
-          <a href="/projects" data-link>← Projekte</a>
-          <h2 style="margin:4px 0;">${this.editing ? this.edit.name : p.name}</h2>
+        <div class="title">
+          <h1>${this.editing ? this.edit.name : p.name}</h1>
           <div class="id">${p.id}</div>
         </div>
-        <div style="display:flex; gap:8px;">
+        <div class="top-actions">
           ${this.editing
             ? html`<jv-button variant="primary" @click=${() => this.#saveEdit()}>Speichern</jv-button>
-                <jv-button @click=${() => { this.editing = false; this.edit = { name: p.name, description: p.description }; }}>Abbrechen</jv-button>`
+                <jv-button @click=${() => {
+                  this.editing = false;
+                  this.edit = { name: p.name, description: p.description };
+                }}>Abbrechen</jv-button>`
             : html`<jv-button @click=${() => (this.editing = true)}>Bearbeiten</jv-button>
-                <jv-button variant="danger" @click=${() => (this.deleteOpen = true)}>Löschen</jv-button>`}
+                <jv-button variant="danger" @click=${() => (this.deleteOpen = true)}>L\u00f6schen</jv-button>`}
         </div>
       </div>
 
       ${this.editing
         ? html`<div class="section">
-            <jv-input
-              label="Name"
-              .value=${this.edit.name}
-              @change=${(e: CustomEvent<{ value: string }>) => (this.edit.name = e.detail.value)}
-            ></jv-input>
-            <jv-input
-              label="Beschreibung"
-              .value=${this.edit.description}
-              @change=${(e: CustomEvent<{ value: string }>) => (this.edit.description = e.detail.value)}
-            ></jv-input>
+            <div class="section-head"><h2>Projektdaten</h2></div>
+            <div class="edit-grid">
+              <jv-input
+                label="Name"
+                .value=${this.edit.name}
+                @change=${(e: CustomEvent<{ value: string }>) => (this.edit.name = e.detail.value)}
+              ></jv-input>
+              <jv-textarea
+                label="Beschreibung"
+                .value=${this.edit.description}
+                @change=${(e: CustomEvent<{ value: string }>) => (this.edit.description = e.detail.value)}
+              ></jv-textarea>
+            </div>
           </div>`
         : html`<p class="desc">${p.description || "Keine Beschreibung"}</p>`}
 
+      <div class="stats">
+        <div class="stat"><div class="num">${comps.length}</div><div class="label">Komponenten</div></div>
+        <div class="stat"><div class="num">${matches.length}</div><div class="label">Matches</div></div>
+        <div class="stat ${highCount > 0 ? "danger" : ""}">
+          <div class="num">${highCount}</div><div class="label">Kritisch/Hoch</div>
+        </div>
+        <div class="stat ${maxCvss >= 7 ? "warn" : ""}">
+          <div class="num">${maxCvss.toFixed(1)}</div><div class="label">Max. CVSS</div>
+        </div>
+      </div>
+
       <div class="section">
-        <h3>Komponenten (${(p.components ?? []).length})</h3>
-        <div class="form">
+        <div class="section-head">
+          <h2>Komponenten<span class="count">${comps.length}</span></h2>
+          <jv-button variant="ghost" @click=${() => (this.sbomOpen = !this.sbomOpen)}>
+            ${this.sbomOpen ? "SBOM schlie\u00dfen" : "SBOM hochladen"}
+          </jv-button>
+        </div>
+
+        <div class="add-row">
           <jv-input
             label="Komponente"
             placeholder="z.B. pkg:npm/lit"
@@ -336,17 +450,13 @@ export class JvProjectDetail extends LitElement {
             .value=${this.compForm.version}
             @change=${(e: CustomEvent<{ value: string }>) => (this.compForm.version = e.detail.value)}
           ></jv-input>
-          <jv-button variant="primary" @click=${() => this.#addComponent()}>Hinzufügen</jv-button>
+          <jv-button variant="primary" @click=${() => this.#addComponent()}>Hinzuf\u00fcgen</jv-button>
         </div>
-        <div class="sbom-row">
-          <jv-button @click=${() => (this.sbomOpen = !this.sbomOpen)}>
-            ${this.sbomOpen ? "SBOM-Upload schließen" : "SBOM hochladen (CycloneDX)"}
-          </jv-button>
-        </div>
+
         ${this.sbomOpen
           ? html`<div class="sbom">
-              <p class="hint">CycloneDX-JSON (bomFormat) als Datei auswählen oder als Text einfügen.</p>
-              <input type="file" accept="application/json,.json" @change=${(e: Event) => this.#pickSbomFile(e)} />
+              <p class="hint">CycloneDX-JSON als Datei ausw\u00e4hlen oder als Text einf\u00fcgen.</p>
+              <input class="file" type="file" accept="application/json,.json" @change=${(e: Event) => this.#pickSbomFile(e)} />
               <jv-textarea
                 label="CycloneDX JSON"
                 placeholder='{"bomFormat":"CycloneDX", ...}'
@@ -355,20 +465,21 @@ export class JvProjectDetail extends LitElement {
               ></jv-textarea>
               <div class="sbom-actions">
                 <jv-button variant="primary" ?disabled=${this.importing} @click=${() => this.#importSbom()}>
-                  ${this.importing ? "Importiere…" : "Importieren"}
+                  ${this.importing ? "Importiere\u2026" : "Importieren"}
                 </jv-button>
                 <jv-button @click=${() => { this.sbomOpen = false; this.sbomText = ""; }}>Abbrechen</jv-button>
               </div>
             </div>`
-          : null}
-        ${(p.components ?? []).length === 0
-          ? html`<p style="color:var(--jv-text-muted);">Keine Komponenten.</p>`
+          : nothing}
+
+        ${comps.length === 0
+          ? html`<div class="empty">Noch keine Komponenten. F\u00fcge eine hinzu oder importiere ein SBOM.</div>`
           : html`<table>
               <thead>
                 <tr><th>Komponente</th><th>Version</th><th></th></tr>
               </thead>
               <tbody>
-                ${(p.components ?? []).map(
+                ${comps.map(
                   (c) => html`<tr>
                     <td>${c.component}</td>
                     <td>
@@ -384,15 +495,15 @@ export class JvProjectDetail extends LitElement {
                               }}
                             />
                             <jv-button variant="primary" ?disabled=${this.savingVersion} @click=${() => this.#saveVersion(c.component)}>OK</jv-button>
-                            <jv-button @click=${() => this.#cancelEditVersion()}>✕</jv-button>
+                            <jv-button @click=${() => this.#cancelEditVersion()}>\u2715</jv-button>
                           </div>`
                         : html`<code>${c.version}</code>`}
                     </td>
                     <td>
                       <div class="row-actions">
                         ${this.editingComponent === c.component
-                          ? null
-                          : html`<jv-button @click=${() => this.#startEditVersion(c.component, c.version)}>Bearbeiten</jv-button>`}
+                          ? nothing
+                          : html`<jv-button variant="ghost" @click=${() => this.#startEditVersion(c.component, c.version)}>Bearbeiten</jv-button>`}
                         <jv-button variant="danger" @click=${() => (this.removeComponent = c.component)}>Entfernen</jv-button>
                       </div>
                     </td>
@@ -403,15 +514,17 @@ export class JvProjectDetail extends LitElement {
       </div>
 
       <div class="section">
-        <h3>Matches (${this.matchResults.length})</h3>
-        ${this.matchResults.length === 0
-          ? html`<p class="match-empty">Keine Treffer für die eingesetzten Komponenten.</p>`
+        <div class="section-head">
+          <h2>Matches<span class="count">${matches.length}</span></h2>
+        </div>
+        ${matches.length === 0
+          ? html`<div class="empty">Keine Treffer f\u00fcr die eingesetzten Komponenten.</div>`
           : html`<table>
               <thead>
                 <tr><th>Komponente</th><th>Version</th><th>Schwachstelle</th><th>CVSS</th></tr>
               </thead>
               <tbody>
-                ${this.matchResults.map(
+                ${matches.map(
                   (m) => html`<tr>
                     <td>${m.component}</td>
                     <td><code>${m.version}</code></td>
@@ -425,7 +538,7 @@ export class JvProjectDetail extends LitElement {
 
       <jv-confirm-dialog
         .open=${this.deleteOpen}
-        heading="Projekt löschen?"
+        heading="Projekt l\u00f6schen?"
         message="Das Projekt wird soft-deleted."
         @confirm=${() => this.#confirmDelete()}
         @cancel=${() => (this.deleteOpen = false)}

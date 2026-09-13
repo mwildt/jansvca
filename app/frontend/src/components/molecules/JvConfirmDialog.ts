@@ -12,7 +12,9 @@ export class JvConfirmDialog extends LitElement {
     .overlay {
       position: fixed;
       inset: 0;
-      background: rgba(15, 23, 42, 0.45);
+      background: rgba(2, 6, 23, 0.7);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -20,10 +22,11 @@ export class JvConfirmDialog extends LitElement {
     }
     .dialog {
       background: var(--jv-surface);
+      border: 1px solid var(--jv-border);
       border-radius: var(--jv-lg);
       padding: var(--jv-xl);
       max-width: 420px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+      box-shadow: var(--jv-shadow-lg);
     }
     h3 {
       margin: 0 0 var(--jv-md);

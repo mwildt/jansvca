@@ -16,36 +16,63 @@ export class JvApp extends LitElement {
     :host {
       display: block;
       min-height: 100vh;
-      background: var(--jv-bg);
+      background:
+        radial-gradient(1200px 600px at 100% -10%, rgba(99, 102, 241, 0.12), transparent 60%),
+        radial-gradient(900px 500px at -10% 0%, rgba(34, 197, 94, 0.06), transparent 55%),
+        var(--jv-bg);
+      font-family: var(--jv-font-sans);
+      color: var(--jv-text);
     }
     .topbar {
-      background: var(--jv-surface);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(15, 23, 42, 0.72);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--jv-border);
-      padding: 0 var(--jv-xl);
+      padding: 0 var(--jv-2xl);
       display: flex;
       align-items: center;
-      height: 56px;
+      height: 60px;
       gap: var(--jv-xl);
     }
     .brand {
+      display: flex;
+      align-items: center;
+      gap: var(--jv-sm);
       font-weight: 700;
-      font-size: 1.1rem;
-      letter-spacing: -0.01em;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+    .brand .mark {
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--jv-primary), #8b5cf6);
+      box-shadow: 0 6px 16px rgba(99, 102, 241, 0.45);
     }
     .nav {
       display: flex;
-      gap: var(--jv-md);
+      gap: var(--jv-xs);
       flex: 1;
     }
     .nav a {
       color: var(--jv-text-muted);
-      font-size: 0.92rem;
-      padding: var(--jv-xs) var(--jv-sm);
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: var(--jv-sm) var(--jv-md);
       border-radius: var(--jv-sm);
+      transition: color 0.12s ease, background 0.12s ease;
+    }
+    .nav a:hover {
+      color: var(--jv-text);
+      background: var(--jv-surface-alt);
     }
     .nav a.active {
       color: var(--jv-text);
       background: var(--jv-surface-alt);
+      box-shadow: inset 0 -2px 0 var(--jv-primary);
     }
     .user {
       color: var(--jv-text-muted);
@@ -54,24 +81,43 @@ export class JvApp extends LitElement {
       align-items: center;
       gap: var(--jv-md);
     }
+    .user .avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .user a {
+      color: var(--jv-text-muted);
+      text-decoration: none;
+    }
+    .user a:hover {
+      color: var(--jv-text);
+    }
     .main {
-      max-width: 960px;
+      max-width: 1120px;
       margin: 0 auto;
-      padding: var(--jv-xl);
+      padding: var(--jv-2xl) var(--jv-2xl) var(--jv-2xl);
     }
     .login {
       max-width: 420px;
-      margin: 80px auto;
+      margin: 96px auto;
       text-align: center;
       background: var(--jv-surface);
       border: 1px solid var(--jv-border);
       border-radius: var(--jv-lg);
-      padding: var(--jv-xl);
+      padding: var(--jv-2xl);
+      box-shadow: var(--jv-shadow-lg);
     }
     .login h2 {
       margin: 0 0 var(--jv-md);
     }
-
     .login p {
       color: var(--jv-text-muted);
       margin-bottom: var(--jv-xl);
@@ -111,20 +157,21 @@ export class JvApp extends LitElement {
   }
 
   render() {
-    if (!this.authReady) return html`<div class="main"><p>Lädt…</p></div>`;
+    if (!this.authReady) return html`<div class="main"><p>L\u00e4dt\u2026</p></div>`;
     const authEnabled = !window.location.search.includes("noauth");
     if (!this.user.authenticated && authEnabled) {
       return html`<div class="login">
         <h2>Anmeldung erforderlich</h2>
-        <p>Bitte melde dich über den OAuth2-Provider an.</p>
+        <p>Bitte melde dich \u00fcber den OAuth2-Provider an.</p>
         <jv-button variant="primary" @click=${this.#login}>Anmelden</jv-button>
       </div>`;
     }
     return html`
       <div class="topbar">
-        <div class="brand">jansvca</div>
+        <div class="brand"><span class="mark"></span><span>jansvca</span></div>
         <nav class="nav">${this.#navItems()}</nav>
         <div class="user">
+          ${this.user.name ? html`<span class="avatar">${this.user.name.slice(0, 1).toUpperCase()}</span>` : nothing}
           ${this.user.name ? html`<span>${this.user.name}</span>` : nothing}
           ${this.user.authenticated
             ? html`<a href="/api/auth/logout" @click=${this.#logout}>Abmelden</a>`
@@ -138,7 +185,7 @@ export class JvApp extends LitElement {
 
   #navItems(): TemplateResult[] {
     const items: { label: string; href: string; match: string }[] = [
-      { label: "Übersicht", href: "/", match: "/" },
+      { label: "\u00dcbersicht", href: "/", match: "/" },
       { label: "Projekte", href: "/projects", match: "/projects" },
       { label: "Schwachstellen", href: "/vulnerabilities", match: "/vulnerabilities" },
     ];
@@ -153,14 +200,15 @@ export class JvApp extends LitElement {
           e.preventDefault();
           navigate(i.href);
         }}
-        >${i.label}</a
+        >${i.label}</a>
       >`,
     );
   }
 
   #route(): TemplateResult {
     if (this.path === "/" || this.path === "") return html`<jv-dashboard></jv-dashboard>`;
-    if (this.path === "/projects") return html`<jv-project-list></jv-project-list>`;
+    if (this.path === "/projects" || this.path === "/projects/") return html`<jv-project-list></jv-project-list>`;
+    if (this.path === "/projects/new") return html`<jv-project-new></jv-project-new>`;
     const pd = matchPattern("/projects/:id", this.path);
     if (pd) return html`<jv-project-detail .projectId=${pd.params.id}></jv-project-detail>`;
     if (this.path === "/vulnerabilities") return html`<jv-vuln-list></jv-vuln-list>`;
