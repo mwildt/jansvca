@@ -182,7 +182,7 @@ Rollen:
 - [ ] Schwachstellen-ID ist verpflichtend
 - [ ] Schwachstelle erscheint nach Speichern in der Schwachstellen-Liste
 
-**Notizen:** Schweregrad z. B. CVSS-Score oder Kritisch/Hoch/Mittel/Niedrig. _
+**Notizen:** Schweregrad als CVSS-Score (numerisch). _
 
 ---
 
@@ -386,10 +386,9 @@ Rollen:
 - [x] Rollen: erst eine `Administrator`-Rolle mit allen Rechten
 - [x] Eventstore: selbstgebaut mit WAL im Infrastruktur-Modul
 - [x] Module: `Projekte`, `Schwachstellen` (+ `Infrastruktur` als Querschnitt)
-- [x] Löschen: Soft-Delete
-- [ ] OAuth2-Provider konkret festlegen
-- [ ] Soft-Delete: Anzeige/Filterung gelöschter Entitäten in UI/API festlegen
-- [ ] Schweregrad-Darstellung: CVSS-Score vs. Kategorien (Kritisch/Hoch/Mittel/Niedrig)
+- [x] Löschen: Soft-Delete (gelöschte Entitäten werden nicht angezeigt)
+- [x] OAuth2-Provider: beliebig austauschbar, kein spezifischer Provider vorgegeben
+- [x] Schweregrad: CVSS-Score
 
 ---
 
@@ -400,3 +399,4 @@ Rollen:
 | 2025-09-13  | 0.1     | Initiale Userstories-Liste                     |
 | 2025-09-13  | 0.3     | Stack: Go + Event Sourcing, Auth/Rollen, semver  |
 | 2025-09-13  | 0.4     | Koordinaten generisch+PURL, OAuth2, eine Rolle, Soft-Delete, WAL-Eventstore, 2 Module  |
+| 2025-09-13  | 0.5     | Schweregrad CVSS, Soft-Delete ohne Anzeige, OAuth2-Provider beliebig  |
