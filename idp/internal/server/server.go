@@ -9,8 +9,9 @@
 package server
 
 import (
+	_ "embed"
 	"encoding/json"
-	"html"
+	"html/template"
 	"net/http"
 	"net/url"
 	"time"
@@ -18,6 +19,20 @@ import (
 	"github.com/mwildt/jansvca/idp/internal/config"
 	"github.com/mwildt/jansvca/idp/internal/token"
 )
+
+//go:embed login.html
+var loginHTML []byte
+
+// loginTmpl is the parsed login form template, parsed once at package init.
+var loginTmpl = template.Must(template.New("login").Parse(string(loginHTML)))
+
+// lastUserCookie is a long-lived, non-session cookie that only remembers the
+// last username used to sign in, so the login form can prefill it. It carries
+// no authentication value.
+const lastUserCookie = "jansvca_lastuser"
+
+// lastUserMaxAge is how long the last-user cookie is kept (1 year).
+const lastUserMaxAge = 3600 * 24 * 365
 
 // Server is the IdP HTTP handler.
 type Server struct {
@@ -68,8 +83,13 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// GET: render the login form.
-	s.renderLogin(w, r, clientID, redirectURI, state, scope, "")
+	// GET: render the login form. Prefill the username from the last-user
+	// cookie if present (non-authenticating convenience only).
+	lastUser := ""
+	if c, err := r.Cookie(lastUserCookie); err == nil && c.Value != "" {
+		lastUser = c.Value
+	}
+	s.renderLogin(w, r, clientID, redirectURI, state, scope, "", lastUser)
 }
 
 func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, client config.Client, redirectURI, state, scope string) {
@@ -82,7 +102,7 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, c
 	user, err := s.store.VerifyPassword(subject, password)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		s.renderLogin(w, r, client.ID, redirectURI, state, scope, "Anmeldung fehlgeschlagen.")
+		s.renderLogin(w, r, client.ID, redirectURI, state, scope, "Anmeldung fehlgeschlagen.", subject)
 		return
 	}
 	code, err := s.tokens.IssueCode(client.ID, user.Subject, user.Name, redirectURI, scope)
@@ -90,6 +110,15 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, c
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     lastUserCookie,
+		Value:    user.Subject,
+		Path:     "/",
+		MaxAge:   lastUserMaxAge,
+		Expires:  time.Now().Add(lastUserMaxAge * time.Second),
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 	u, err := url.Parse(redirectURI)
 	if err != nil {
 		http.Error(w, "bad redirect_uri", http.StatusBadRequest)
@@ -104,32 +133,20 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, c
 	http.Redirect(w, r, u.String(), http.StatusFound)
 }
 
-func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, clientID, redirectURI, state, scope, errMsg string) {
+func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, clientID, redirectURI, state, scope, errMsg, lastUser string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	esc := html.EscapeString
-	body := `<!doctype html><html lang="de"><head><meta charset="utf-8">
-<title>jansvca IdP – Anmeldung</title>
-<style>
-body{font-family:system-ui,sans-serif;background:#f1f5f9;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}
-.card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:24px;max-width:340px;width:100%}
-h1{font-size:1.1rem;margin:0 0 12px}
-label{display:block;font-size:.8rem;color:#64748b;margin-bottom:4px}
-input{width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:.95rem;box-sizing:border-box;margin-bottom:12px}
-button{width:100%;padding:8px;border:0;border-radius:6px;background:#1d4ed8;color:#fff;font-size:.95rem;cursor:pointer}
-.err{color:#dc2626;font-size:.85rem;margin-bottom:12px}
-</style></head><body>
-<form class="card" method="post">
-<h1>Anmeldung – jansvca IdP</h1>`
-	if errMsg != "" {
-		body += `<div class="err">` + esc(errMsg) + `</div>`
+	data := struct {
+		ErrMsg        string
+		LastUser      string
+		FocusUser     bool
+		FocusPassword bool
+	}{
+		ErrMsg:        errMsg,
+		LastUser:      lastUser,
+		FocusUser:     lastUser == "",
+		FocusPassword: lastUser != "",
 	}
-	body += `<label>Benutzername (subject)</label>
-<input name="username" autofocus required>
-<label>Passwort</label>
-<input name="password" type="password" required>
-<button type="submit">Anmelden</button>
-</form></body></html>`
-	_, _ = w.Write([]byte(body))
+	_ = loginTmpl.Execute(w, data)
 }
 
 func redirectAllowed(client config.Client, uri string) bool {
