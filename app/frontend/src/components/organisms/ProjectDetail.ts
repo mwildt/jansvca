@@ -161,7 +161,7 @@ export class JvProjectDetail extends LitElement {
         api.matches(this.projectId).catch(() => [] as Match[]),
       ]);
       this.project = p;
-      this.matchResults = m;
+      this.matchResults = m ?? [];
       this.edit = { name: p.name, description: p.description };
     } catch (e) {
       toast((e as Error).message, "error");
