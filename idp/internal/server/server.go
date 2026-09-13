@@ -95,7 +95,7 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, c
 	user, err := s.store.VerifyPassword(subject, password)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		s.renderLogin(w, r, client.ID, redirectURI, state, scope, "Anmeldung fehlgeschlagen.")
+		s.renderLogin(w, r, client.ID, redirectURI, state, scope, "Anmeldung fehlgeschlagen.", subject)
 		return
 	}
 	code, err := s.tokens.IssueCode(client.ID, user.Subject, user.Name, redirectURI, scope)
