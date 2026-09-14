@@ -10,7 +10,7 @@ export class JvStat extends LitElement {
       display: block;
       background: var(--jv-surface);
       border: 1px solid var(--jv-border);
-      border-radius: var(--jv-md);
+      border-radius: var(--jv-r-md);
       padding: var(--jv-md) var(--jv-lg);
       min-width: 140px;
       box-shadow: var(--jv-shadow-sm);

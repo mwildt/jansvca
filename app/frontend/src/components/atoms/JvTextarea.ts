@@ -1,7 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
-// Atom: labelled textarea.
+// Atom: labelled textarea. Shares radius and border styling with jv-input.
 @customElement("jv-textarea")
 export class JvTextarea extends LitElement {
   static styles = css`
@@ -19,12 +19,12 @@ export class JvTextarea extends LitElement {
     textarea {
       width: 100%;
       min-height: 96px;
-      padding: 9px var(--jv-md);
-      border-radius: var(--jv-sm);
+      padding: var(--jv-sm) var(--jv-md);
+      border-radius: var(--jv-r-sm);
       border: 1px solid var(--jv-border);
       background: var(--jv-surface-2);
       color: var(--jv-text);
-      font-size: 0.88rem;
+      font-size: 0.85rem;
       font-family: var(--jv-font-mono);
       resize: vertical;
       box-sizing: border-box;

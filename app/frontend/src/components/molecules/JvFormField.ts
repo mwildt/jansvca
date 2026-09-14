@@ -32,7 +32,7 @@ export class JvFormField extends LitElement {
       background: rgba(239, 68, 68, 0.1);
       border: 1px solid rgba(239, 68, 68, 0.28);
       padding: var(--jv-xs) var(--jv-sm);
-      border-radius: var(--jv-sm);
+      border-radius: var(--jv-r-sm);
     }
   `;
 

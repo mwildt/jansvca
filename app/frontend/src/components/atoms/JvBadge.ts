@@ -14,7 +14,7 @@ export class JvBadge extends LitElement {
       align-items: center;
       padding: 2px var(--jv-sm);
       border-radius: 999px;
-      font-size: 0.74rem;
+      font-size: 0.72rem;
       font-weight: 600;
       line-height: 1.5;
       background: var(--jv-surface-alt);

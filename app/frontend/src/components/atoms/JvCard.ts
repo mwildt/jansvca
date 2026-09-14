@@ -10,15 +10,15 @@ export class JvCard extends LitElement {
       display: block;
       background: var(--jv-surface);
       border: 1px solid var(--jv-border);
-      border-radius: var(--jv-lg);
-      padding: var(--jv-2xl);
+      border-radius: var(--jv-r-lg);
+      padding: var(--jv-xl);
       box-shadow: var(--jv-shadow-md);
       color: var(--jv-text);
       font-family: var(--jv-font-sans);
     }
     :host([tone="flat"]) {
       box-shadow: var(--jv-shadow-sm);
-      border-radius: var(--jv-md);
+      border-radius: var(--jv-r-md);
       padding: var(--jv-lg) var(--jv-xl);
     }
     :host([interactive]) {

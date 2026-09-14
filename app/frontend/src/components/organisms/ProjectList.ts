@@ -31,7 +31,7 @@ export class JvProjectList extends LitElement {
       flex-direction: column;
       gap: var(--jv-sm);
       padding: var(--jv-lg);
-      border-radius: var(--jv-md);
+      border-radius: var(--jv-r-md);
       box-shadow: var(--jv-shadow-sm);
     }
     .card .name {
@@ -75,7 +75,7 @@ export class JvProjectList extends LitElement {
       color: var(--jv-text-muted);
       cursor: pointer;
       padding: var(--jv-xs);
-      border-radius: var(--jv-sm);
+      border-radius: var(--jv-r-sm);
       font-size: 0.9rem;
       line-height: 1;
     }

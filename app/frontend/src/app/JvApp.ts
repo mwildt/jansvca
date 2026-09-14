@@ -28,14 +28,14 @@ export class JvApp extends LitElement {
       position: sticky;
       top: 0;
       z-index: 50;
-      background: rgba(15, 23, 42, 0.72);
+      background: rgba(15, 23, 42, 0.78);
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--jv-border);
       padding: 0 var(--jv-2xl);
       display: flex;
       align-items: center;
-      height: 60px;
+      height: 56px;
       gap: var(--jv-xl);
     }
     .brand {
@@ -43,15 +43,15 @@ export class JvApp extends LitElement {
       align-items: center;
       gap: var(--jv-sm);
       font-weight: 700;
-      font-size: 1.05rem;
+      font-size: 1rem;
       letter-spacing: -0.02em;
     }
     .brand .mark {
-      width: 26px;
-      height: 26px;
-      border-radius: 8px;
+      width: 24px;
+      height: 24px;
+      border-radius: var(--jv-r-sm);
       background: linear-gradient(135deg, var(--jv-primary), #8b5cf6);
-      box-shadow: 0 6px 16px rgba(99, 102, 241, 0.45);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
     }
     .nav {
       display: flex;
@@ -60,10 +60,11 @@ export class JvApp extends LitElement {
     }
     .nav a {
       color: var(--jv-text-muted);
-      font-size: 0.9rem;
+      font-size: 0.875rem;
       font-weight: 500;
       padding: var(--jv-sm) var(--jv-md);
-      border-radius: var(--jv-sm);
+      border-radius: var(--jv-r-sm);
+      text-decoration: none;
       transition: color 0.12s ease, background 0.12s ease;
     }
     .nav a:hover {
@@ -102,12 +103,12 @@ export class JvApp extends LitElement {
       color: var(--jv-text);
     }
     .main {
-      max-width: 1120px;
+      max-width: 1080px;
       margin: 0 auto;
       padding: var(--jv-2xl) var(--jv-2xl) var(--jv-2xl);
     }
     .gate {
-      min-height: calc(100vh - 60px);
+      min-height: calc(100vh - 56px);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -123,9 +124,9 @@ export class JvApp extends LitElement {
       margin-bottom: var(--jv-xl);
     }
     .login .brand .mark {
-      width: 30px;
-      height: 30px;
-      border-radius: 9px;
+      width: 28px;
+      height: 28px;
+      border-radius: var(--jv-r-md);
     }
     .login h2 {
       margin: 0 0 var(--jv-sm);

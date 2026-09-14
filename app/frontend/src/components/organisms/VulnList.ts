@@ -29,7 +29,7 @@ export class JvVulnList extends LitElement {
       align-items: end;
       background: var(--jv-surface-alt);
       border: 1px solid var(--jv-border);
-      border-radius: var(--jv-md);
+      border-radius: var(--jv-r-md);
       padding: var(--jv-lg) var(--jv-xl);
       margin-bottom: var(--jv-xl);
     }
@@ -41,7 +41,7 @@ export class JvVulnList extends LitElement {
     .item {
       background: var(--jv-surface);
       border: 1px solid var(--jv-border);
-      border-radius: var(--jv-md);
+      border-radius: var(--jv-r-md);
       padding: var(--jv-lg) var(--jv-xl);
       margin-bottom: var(--jv-md);
       box-shadow: var(--jv-shadow-sm);

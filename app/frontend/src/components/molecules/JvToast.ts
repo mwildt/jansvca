@@ -22,7 +22,7 @@ export class JvToast extends LitElement {
       color: var(--jv-text);
       border: 1px solid var(--jv-border-strong);
       padding: var(--jv-md) var(--jv-lg);
-      border-radius: var(--jv-md);
+      border-radius: var(--jv-r-md);
       box-shadow: var(--jv-shadow-lg);
       font-size: 0.88rem;
       max-width: 360px;

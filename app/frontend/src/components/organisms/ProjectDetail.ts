@@ -53,7 +53,7 @@ export class JvProjectDetail extends LitElement {
       margin-top: var(--jv-lg);
       padding: var(--jv-lg);
       border: 1px dashed var(--jv-border-strong);
-      border-radius: var(--jv-md);
+      border-radius: var(--jv-r-md);
       background: var(--jv-surface-2);
       display: grid;
       gap: var(--jv-md);
@@ -74,7 +74,7 @@ export class JvProjectDetail extends LitElement {
     }
     .ver-input {
       padding: 6px var(--jv-sm);
-      border-radius: var(--jv-sm);
+      border-radius: var(--jv-r-sm);
       border: 1px solid var(--jv-border-strong);
       background: var(--jv-surface-2);
       color: var(--jv-text);
