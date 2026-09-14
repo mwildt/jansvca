@@ -24,7 +24,7 @@ func TestImport_NewVulnerabilityWithRanges(t *testing.T) {
 	})
 	vulns := vulnapp.NewCommandHandler(store, bus)
 
-	err = vulns.Import("GHSA-1", "GHSA-1", "RCE in foo", "details", 9.8, []vulnapp.AffectedRangeInput{
+	err = vulns.Import("GHSA-1", "GHSA-1", "RCE in foo", "details", 9.8, "osv", []vulnapp.AffectedRangeInput{
 		{Component: "pkg:npm/foo", VersionRange: "<2.0.0"},
 		{Component: "pkg:npm/bar", VersionRange: ">=1.0.0"},
 	})
@@ -37,6 +37,9 @@ func TestImport_NewVulnerabilityWithRanges(t *testing.T) {
 	}
 	if v.Title != "RCE in foo" || v.CVSS != 9.8 {
 		t.Errorf("metadata: %+v", v)
+	}
+	if v.Source != "osv" {
+		t.Errorf("source: %q (want osv)", v.Source)
 	}
 	if len(v.Affected) != 2 {
 		t.Fatalf("affected ranges: %+v", v.Affected)
@@ -59,14 +62,14 @@ func TestImport_UpdateExistingVulnerability(t *testing.T) {
 	})
 	vulns := vulnapp.NewCommandHandler(store, bus)
 
-	if err := vulns.Import("V1", "V1", "t", "d", 5.0, []vulnapp.AffectedRangeInput{
+	if err := vulns.Import("V1", "V1", "t", "d", 5.0, "osv", []vulnapp.AffectedRangeInput{
 		{Component: "pkg:npm/foo", VersionRange: "<2.0.0"},
 	}); err != nil {
 		t.Fatalf("import 1: %v", err)
 	}
 
 	// Update: change range, add a new one, change metadata.
-	if err := vulns.Import("V1", "V1", "new-title", "new-desc", 8.0, []vulnapp.AffectedRangeInput{
+	if err := vulns.Import("V1", "V1", "new-title", "new-desc", 8.0, "osv", []vulnapp.AffectedRangeInput{
 		{Component: "pkg:npm/foo", VersionRange: "<3.0.0"},
 		{Component: "pkg:npm/bar", VersionRange: ">=1.0.0"},
 	}); err != nil {
@@ -103,12 +106,12 @@ func TestImport_NoOpWhenUnchanged(t *testing.T) {
 	ranges := []vulnapp.AffectedRangeInput{
 		{Component: "pkg:npm/foo", VersionRange: "<2.0.0"},
 	}
-	if err := vulns.Import("V1", "V1", "t", "d", 5.0, ranges); err != nil {
+	if err := vulns.Import("V1", "V1", "t", "d", 5.0, "osv", ranges); err != nil {
 		t.Fatalf("import 1: %v", err)
 	}
 	before := store.CurrentVersion("vulnerability:V1")
 	// Re-importing identical data should be a no-op.
-	if err := vulns.Import("V1", "V1", "t", "d", 5.0, ranges); err != nil {
+	if err := vulns.Import("V1", "V1", "t", "d", 5.0, "osv", ranges); err != nil {
 		t.Fatalf("import 2: %v", err)
 	}
 	after := store.CurrentVersion("vulnerability:V1")

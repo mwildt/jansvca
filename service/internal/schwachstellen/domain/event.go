@@ -14,12 +14,16 @@ const (
 )
 
 // VulnerabilityCreated is emitted when a vulnerability is recorded.
+// Source records the origin of the vulnerability (e.g. "manual" for
+// user-created entries via the REST API, "osv" for records imported from
+// osv.dev). It is set at creation and not changed by later updates.
 type VulnerabilityCreated struct {
 	VulnerabilityID string  `json:"vulnerability_id"`
 	Identifier      string  `json:"identifier"`
 	Title           string  `json:"title"`
 	Description     string  `json:"description,omitempty"`
 	CVSS            float64 `json:"cvss"`
+	Source          string  `json:"source,omitempty"`
 }
 
 func (VulnerabilityCreated) EventType() eventstore.EventType { return EventVulnerabilityCreated }

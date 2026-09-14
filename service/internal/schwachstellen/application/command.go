@@ -72,7 +72,7 @@ func (h *CommandHandler) commit(id string, expected eventstore.Version, events [
 }
 
 func (h *CommandHandler) Create(id, identifier, title, description string, cvss float64) error {
-	events, err := domain.CreateVulnerability(id, identifier, title, description, cvss)
+	events, err := domain.CreateVulnerability(id, identifier, title, description, cvss, "manual")
 	if err != nil {
 		return err
 	}
@@ -133,13 +133,13 @@ func (h *CommandHandler) RemoveAffectedRange(id, component string) error {
 // exists (version > 0) it is treated as an update via Reconcile instead.
 type AffectedRangeInput = domain.AffectedRangeInput
 
-func (h *CommandHandler) Import(id, identifier, title, description string, cvss float64, ranges []AffectedRangeInput) error {
+func (h *CommandHandler) Import(id, identifier, title, description string, cvss float64, source string, ranges []AffectedRangeInput) error {
 	v, err := h.repo.Load(id)
 	if err != nil {
 		return err
 	}
 	if v.ID == "" {
-		events, err := domain.CreateVulnerability(id, identifier, title, description, cvss)
+		events, err := domain.CreateVulnerability(id, identifier, title, description, cvss, source)
 		if err != nil {
 			return err
 		}

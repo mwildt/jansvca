@@ -71,7 +71,7 @@ func main() {
 		MatchingRead:    matchRead,
 	})
 
-	if osvSync := newOSVSync(vulnerabilities); osvSync != nil {
+	if osvSync := newOSVSync(vulnerabilities, dataDir); osvSync != nil {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		go func() {
@@ -106,7 +106,7 @@ func envOr(key, def string) string {
 
 // newOSVSync builds the osv.dev sync unless disabled via JANSVCA_OSV_SYNC=off.
 // The fetch base URL and refresh interval are configurable for development.
-func newOSVSync(store *vulnapp.CommandHandler) *syncpkg.Sync {
+func newOSVSync(store *vulnapp.CommandHandler, dataDir string) *syncpkg.Sync {
 	if os.Getenv("JANSVCA_OSV_SYNC") == "off" {
 		return nil
 	}
@@ -120,7 +120,8 @@ func newOSVSync(store *vulnapp.CommandHandler) *syncpkg.Sync {
 			interval = d
 		}
 	}
-	return syncpkg.New(client, store, interval)
+	state := syncpkg.NewStateStore(filepath.Join(dataDir, "osv-sync.json"))
+	return syncpkg.New(client, store, state, interval)
 }
 
 func matchProjekte(env eventstore.Envelope) bool {

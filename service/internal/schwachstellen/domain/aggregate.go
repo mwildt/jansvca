@@ -18,12 +18,16 @@ type AffectedRange struct {
 }
 
 // Vulnerability is the aggregate root for a tracked vulnerability.
+// Source records where the vulnerability originated from ("manual" for
+// REST-API entries, "osv" for osv.dev imports); it is immutable after
+// creation.
 type Vulnerability struct {
 	ID          string
 	Identifier  string
 	Title       string
 	Description string
 	CVSS        float64
+	Source      string
 	Affected    map[string]AffectedRange
 	Deleted     bool
 	version     eventstore.Version
@@ -48,6 +52,7 @@ func (v *Vulnerability) Apply(env eventstore.Envelope) error {
 		v.Title = e.Title
 		v.Description = e.Description
 		v.CVSS = e.CVSS
+		v.Source = e.Source
 		v.Affected = map[string]AffectedRange{}
 	case EventVulnerabilityUpdated:
 		var e VulnerabilityUpdated
@@ -89,7 +94,9 @@ func (v *Vulnerability) Apply(env eventstore.Envelope) error {
 func (v *Vulnerability) Version() eventstore.Version { return v.version }
 
 // CreateVulnerability produces the events for creating a vulnerability.
-func CreateVulnerability(id, identifier, title, description string, cvss float64) ([]eventstore.PayloadEvent, error) {
+// source records the origin ("manual" for REST-API entries, "osv" for
+// osv.dev imports); an empty source defaults to "manual".
+func CreateVulnerability(id, identifier, title, description string, cvss float64, source string) ([]eventstore.PayloadEvent, error) {
 	if id == "" {
 		return nil, errors.New("schwachstellen: vulnerability id is required")
 	}
@@ -99,12 +106,16 @@ func CreateVulnerability(id, identifier, title, description string, cvss float64
 	if title == "" {
 		return nil, errors.New("schwachstellen: title is required")
 	}
+	if source == "" {
+		source = "manual"
+	}
 	return []eventstore.PayloadEvent{VulnerabilityCreated{
 		VulnerabilityID: id,
 		Identifier:      identifier,
 		Title:           title,
 		Description:     description,
 		CVSS:            cvss,
+		Source:          source,
 	}}, nil
 }
 

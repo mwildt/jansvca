@@ -19,6 +19,7 @@ type ImportRecord struct {
 	Description string
 	CVSS        float64
 	Withdrawn   bool
+	Source      string
 	Modified    time.Time
 	Affected    []AffectedRange
 }
@@ -42,6 +43,7 @@ func Map(r Record) ImportRecord {
 		Description: r.Details,
 		CVSS:        mapCVSS(r.Severity),
 		Withdrawn:   r.Withdrawn != "",
+		Source:      "osv",
 		Modified:    parseTime(r.Modified),
 	}
 	for _, a := range r.Affected {
@@ -75,7 +77,7 @@ func Map(r Record) ImportRecord {
 // one AffectedRangeAdded per range, mirroring the schwachstellen event model.
 func (i ImportRecord) ToCreate() ([]eventstore.PayloadEvent, error) {
 	events := make([]eventstore.PayloadEvent, 0, 1+len(i.Affected))
-	created, err := domain.CreateVulnerability(i.ID, i.Identifier, i.Title, i.Description, i.CVSS)
+	created, err := domain.CreateVulnerability(i.ID, i.Identifier, i.Title, i.Description, i.CVSS, i.Source)
 	if err != nil {
 		return nil, err
 	}

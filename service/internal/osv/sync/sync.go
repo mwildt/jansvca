@@ -26,13 +26,14 @@ import (
 
 // VulnerabilityStore is the write port used to upsert vulnerabilities.
 type VulnerabilityStore interface {
-	Import(id, identifier, title, description string, cvss float64, ranges []vulnapp.AffectedRangeInput) error
+	Import(id, identifier, title, description string, cvss float64, source string, ranges []vulnapp.AffectedRangeInput) error
 }
 
 // Sync imports osv.dev vulnerabilities into the schwachstellen module.
 type Sync struct {
 	Client    *osv.Client
 	Store     VulnerabilityStore
+	State     *StateStore // persists lastSync across restarts (optional)
 	Interval  time.Duration
 	OnError   func(err error) // optional; defaults to log.Printf
 	BatchSize int             // max records per incremental fetch (0 = unlimited)
@@ -42,19 +43,26 @@ type Sync struct {
 }
 
 // New creates a Sync with sensible defaults. interval is the refresh cadence
-// for Run; pass 0 to use the default of one hour.
-func New(client *osv.Client, store VulnerabilityStore, interval time.Duration) *Sync {
+// for Run; pass 0 to use the default of one hour. state is an optional
+// StateStore to resume incremental syncs after a restart; pass nil to keep the
+// progress in memory only (first run always downloads all.zip).
+func New(client *osv.Client, store VulnerabilityStore, state *StateStore, interval time.Duration) *Sync {
 	if interval <= 0 {
 		interval = time.Hour
 	}
 	if client == nil {
 		client = osv.NewClient()
 	}
-	return &Sync{
+	s := &Sync{
 		Client:   client,
 		Store:    store,
+		State:    state,
 		Interval: interval,
 	}
+	if state != nil {
+		s.lastSync = state.Load()
+	}
+	return s
 }
 
 func (s *Sync) onError(err error) {
@@ -114,13 +122,7 @@ func (s *Sync) bulk(ctx context.Context) (int, error) {
 		}
 		n++
 	}
-	s.mu.Lock()
-	if latest.IsZero() {
-		s.lastSync = time.Now().UTC()
-	} else {
-		s.lastSync = latest
-	}
-	s.mu.Unlock()
+	s.setLastSync(latest)
 	return n, nil
 }
 
@@ -153,8 +155,11 @@ func (s *Sync) incremental(ctx context.Context, since time.Time) (int, error) {
 	s.mu.Lock()
 	if latest.After(s.lastSync) {
 		s.lastSync = latest
+		s.mu.Unlock()
+		s.persistState(latest)
+	} else {
+		s.mu.Unlock()
 	}
-	s.mu.Unlock()
 	return n, nil
 }
 
@@ -169,7 +174,7 @@ func (s *Sync) upsert(ctx context.Context, imp osv.ImportRecord) error {
 			VersionRange: a.VersionRange,
 		})
 	}
-	return s.Store.Import(imp.ID, imp.Identifier, imp.Title, imp.Description, imp.CVSS, ranges)
+	return s.Store.Import(imp.ID, imp.Identifier, imp.Title, imp.Description, imp.CVSS, imp.Source, ranges)
 }
 
 // LastSync returns the timestamp of the most recent successful sync (the
@@ -178,4 +183,28 @@ func (s *Sync) LastSync() time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.lastSync
+}
+
+// setLastSync stores the latest modified timestamp seen during a bulk import
+// and persists it. A zero latest falls back to the current time so an empty
+// all.zip still advances the cursor.
+func (s *Sync) setLastSync(latest time.Time) {
+	s.mu.Lock()
+	if latest.IsZero() {
+		latest = time.Now().UTC()
+	}
+	s.lastSync = latest
+	s.mu.Unlock()
+	s.persistState(latest)
+}
+
+// persistState writes lastSync to the StateStore, if configured. Errors are
+// reported via OnError but never abort the sync.
+func (s *Sync) persistState(last time.Time) {
+	if s.State == nil {
+		return
+	}
+	if err := s.State.Save(last); err != nil {
+		s.onError(err)
+	}
 }

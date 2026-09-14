@@ -12,12 +12,15 @@ import (
 )
 
 // VulnerabilityView is the read-model representation of a vulnerability.
+// Source records the origin ("manual" for REST-API entries, "osv" for
+// osv.dev imports).
 type VulnerabilityView struct {
 	ID          string              `json:"id"`
 	Identifier  string              `json:"identifier"`
 	Title       string              `json:"title"`
 	Description string              `json:"description"`
 	CVSS        float64             `json:"cvss"`
+	Source      string              `json:"source"`
 	Affected    []AffectedRangeView `json:"affected"`
 }
 
@@ -102,6 +105,7 @@ func (m *MatchingProjection) Apply(env eventstore.Envelope) {
 			Title:       e.Title,
 			Description: e.Description,
 			CVSS:        e.CVSS,
+			Source:      e.Source,
 			Affected:    []AffectedRangeView{},
 		}
 	case vulndomain.EventVulnerabilityUpdated:

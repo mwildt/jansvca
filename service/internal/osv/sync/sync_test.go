@@ -56,7 +56,32 @@ func newHarness(t *testing.T) (*vulnapp.CommandHandler, *vulnapp.MatchingProject
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	client := &osv.Client{BaseURL: srv.URL, HTTPClient: srv.Client()}
-	sync := syncpkg.New(client, vulns, time.Hour)
+	sync := syncpkg.New(client, vulns, nil, time.Hour)
+	return vulns, read, sync, srv
+}
+
+func newHarnessState(t *testing.T, state *syncpkg.StateStore) (*vulnapp.CommandHandler, *vulnapp.MatchingProjection, *syncpkg.Sync, *httptest.Server) {
+	t.Helper()
+	dir := t.TempDir()
+	bus := eventstore.NewBus()
+	store, err := eventstore.New(filepath.Join(dir, "schwachstellen.wal"))
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	read := vulnapp.NewMatchingProjection()
+	bus.Subscribe(func(env eventstore.Envelope) bool {
+		p := eventstore.EventType("schwachstellen.")
+		return len(env.Type) >= len(p) && env.Type[:len(p)] == p
+	}, func(env eventstore.Envelope) {
+		read.Apply(env)
+	})
+	vulns := vulnapp.NewCommandHandler(store, bus)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	client := &osv.Client{BaseURL: srv.URL, HTTPClient: srv.Client()}
+	sync := syncpkg.New(client, vulns, state, time.Hour)
 	return vulns, read, sync, srv
 }
 
