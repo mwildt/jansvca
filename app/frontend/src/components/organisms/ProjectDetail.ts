@@ -32,6 +32,16 @@ export class JvProjectDetail extends LitElement {
       margin-bottom: var(--jv-xl);
       line-height: 1.5;
     }
+    .filter-row {
+      display: flex;
+      align-items: end;
+      gap: var(--jv-md);
+      margin-bottom: var(--jv-lg);
+      max-width: 420px;
+    }
+    .filter-row jv-input {
+      flex: 1;
+    }
     .add-row {
       display: grid;
       grid-template-columns: 1fr 160px auto;
@@ -134,6 +144,7 @@ export class JvProjectDetail extends LitElement {
   @state() private sbomOpen = false;
   @state() private sbomText = "";
   @state() private importing = false;
+  @state() private compFilter = "";
 
   #matchColumns = [
     { label: "Komponente" },
@@ -299,6 +310,10 @@ export class JvProjectDetail extends LitElement {
     if (!this.project) return html`<p>Projekt nicht gefunden.</p>`;
     const p = this.project;
     const comps = p.components ?? [];
+    const f = this.compFilter.trim().toLowerCase();
+    const filteredComps = f
+      ? comps.filter((c) => c.component.toLowerCase().includes(f) || c.version.toLowerCase().includes(f))
+      : comps;
     const matches = this.matchResults ?? [];
     const highCount = matches.filter((m) => m.cvss >= 7).length;
     const maxCvss = matches.reduce((mx, m) => Math.max(mx, m.cvss), 0);
@@ -352,6 +367,20 @@ export class JvProjectDetail extends LitElement {
           ${this.sbomOpen ? "SBOM schlie\u00dfen" : "SBOM hochladen"}
         </jv-button>
 
+        ${comps.length > 0
+          ? html`<div class="filter-row">
+              <jv-input
+                label="Filter"
+                placeholder="Komponente oder Version suchen"
+                .value=${this.compFilter}
+                @change=${(e: CustomEvent<{ value: string }>) => (this.compFilter = e.detail.value)}
+              ></jv-input>
+              ${this.compFilter
+                ? html`<jv-button variant="ghost" @click=${() => (this.compFilter = "")}>Zur\u00fccksetzen</jv-button>`
+                : nothing}
+            </div>`
+          : nothing}
+
         <div class="add-row">
           <jv-input
             label="Komponente"
@@ -389,13 +418,15 @@ export class JvProjectDetail extends LitElement {
 
         ${comps.length === 0
           ? html`<div class="empty">Noch keine Komponenten. F\u00fcge eine hinzu oder importiere ein SBOM.</div>`
-          : html`<table>
-              <thead>
-                <tr><th>Komponente</th><th>Version</th><th></th></tr>
-              </thead>
-              <tbody>
-                ${comps.map(
-                  (c) => html`<tr>
+          : filteredComps.length === 0
+            ? html`<div class="empty">Keine Komponenten passen auf den Filter „${this.compFilter}".</div>`
+            : html`<table>
+                <thead>
+                  <tr><th>Komponente</th><th>Version</th><th></th></tr>
+                </thead>
+                <tbody>
+                  ${filteredComps.map(
+                    (c) => html`<tr>
                     <td>${c.component}</td>
                     <td>
                       ${this.editingComponent === c.component
@@ -423,9 +454,9 @@ export class JvProjectDetail extends LitElement {
                       </jv-button-row>
                     </td>
                   </tr>`,
-                )}
-              </tbody>
-            </table>`}
+                  )}
+                </tbody>
+              </table>`}
       </jv-section>
 
       <jv-section heading="Matches" .count=${matches.length}>
