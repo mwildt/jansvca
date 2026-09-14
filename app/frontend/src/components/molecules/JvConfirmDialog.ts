@@ -23,7 +23,7 @@ export class JvConfirmDialog extends LitElement {
     .dialog {
       background: var(--jv-surface);
       border: 1px solid var(--jv-border);
-      border-radius: var(--jv-lg);
+      border-radius: var(--jv-r-lg);
       padding: var(--jv-xl);
       max-width: 420px;
       box-shadow: var(--jv-shadow-lg);

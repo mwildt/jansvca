@@ -13,7 +13,7 @@ export class JvCode extends LitElement {
       color: var(--jv-text-muted);
       background: var(--jv-surface-2);
       padding: 1px var(--jv-xs);
-      border-radius: var(--jv-xs);
+      border-radius: var(--jv-r-xs);
     }
   `;
 

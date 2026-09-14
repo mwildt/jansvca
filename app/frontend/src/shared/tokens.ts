@@ -1,8 +1,13 @@
+import { css, unsafeCSS, type CSSResultGroup } from "lit";
+
 // Design tokens, exposed as CSS custom properties on the host. Components
 // reference them via var(--jv-*) in their static styles, which avoids needing
 // `unsafeCSS` for string interpolation inside `css` tagged templates.
-import { css, unsafeCSS, type CSSResultGroup } from "lit";
-
+//
+// Two independent scales share short, consistent names:
+//   - spacing : --jv-xs ... --jv-2xl (padding, gap, margin)
+//   - radius  : --jv-r-xs ... --jv-r-lg (border-radius)
+// Keeping them separate lets every component render uniformly.
 export const tokens = {
   color: {
     bg: "#0b1120",
@@ -19,9 +24,9 @@ export const tokens = {
     warn: "#f59e0b",
   },
   radius: {
-    sm: "8px",
-    md: "12px",
-    lg: "18px",
+    sm: "6px",
+    md: "10px",
+    lg: "14px",
   },
   space: {
     xs: "4px",
@@ -58,15 +63,25 @@ const tokenVars = `
     --jv-danger-soft: rgba(239, 68, 68, 0.18);
     --jv-success: #22c55e;
     --jv-warn: #f59e0b;
-    --jv-radius-sm: 8px;
-    --jv-radius-md: 12px;
-    --jv-radius-lg: 18px;
     --jv-space-xs: 4px;
+    --jv-xs: 4px;
     --jv-space-sm: 8px;
+    --jv-sm: 8px;
     --jv-space-md: 12px;
+    --jv-md: 12px;
     --jv-space-lg: 16px;
+    --jv-lg: 16px;
     --jv-space-xl: 24px;
+    --jv-xl: 24px;
     --jv-space-2xl: 32px;
+    --jv-2xl: 32px;
+    --jv-r-xs: 4px;
+    --jv-r-sm: 6px;
+    --jv-r-md: 10px;
+    --jv-r-lg: 14px;
+    --jv-radius-sm: 6px;
+    --jv-radius-md: 10px;
+    --jv-radius-lg: 14px;
     --jv-font-sans: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
     --jv-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     --jv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);

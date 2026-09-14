@@ -11,7 +11,7 @@ export class JvEmpty extends LitElement {
       padding: var(--jv-2xl);
       color: var(--jv-text-muted);
       border: 1px dashed var(--jv-border-strong);
-      border-radius: var(--jv-md);
+      border-radius: var(--jv-r-md);
       background: var(--jv-surface-2);
     }
     .title {

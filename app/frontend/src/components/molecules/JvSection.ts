@@ -11,7 +11,7 @@ export class JvSection extends LitElement {
       display: block;
       background: var(--jv-surface);
       border: 1px solid var(--jv-border);
-      border-radius: var(--jv-lg);
+      border-radius: var(--jv-r-lg);
       padding: var(--jv-xl);
       margin-bottom: var(--jv-xl);
       box-shadow: var(--jv-shadow-sm);

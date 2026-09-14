@@ -1,7 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
-// Atom: labelled text input.
+// Atom: labelled text input. Matches jv-button height (36px) for aligned rows.
 @customElement("jv-input")
 export class JvInput extends LitElement {
   static styles = css`
@@ -18,15 +18,16 @@ export class JvInput extends LitElement {
     }
     input {
       width: 100%;
-      padding: 9px var(--jv-md);
-      border-radius: var(--jv-sm);
+      height: 36px;
+      padding: 0 var(--jv-md);
+      border-radius: var(--jv-r-sm);
       border: 1px solid var(--jv-border);
       background: var(--jv-surface-2);
       color: var(--jv-text);
-      font-size: 0.9rem;
+      font-size: 0.875rem;
       font-family: inherit;
-      transition: border-color 0.14s ease, box-shadow 0.14s ease;
       box-sizing: border-box;
+      transition: border-color 0.14s ease, box-shadow 0.14s ease;
     }
     input::placeholder {
       color: #475569;
