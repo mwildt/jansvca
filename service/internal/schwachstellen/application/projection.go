@@ -12,12 +12,15 @@ import (
 )
 
 // VulnerabilityView is the read-model representation of a vulnerability.
+// Source records the origin ("manual" for REST-API entries, "osv" for
+// osv.dev imports).
 type VulnerabilityView struct {
 	ID          string              `json:"id"`
 	Identifier  string              `json:"identifier"`
 	Title       string              `json:"title"`
 	Description string              `json:"description"`
 	CVSS        float64             `json:"cvss"`
+	Source      string              `json:"source"`
 	Affected    []AffectedRangeView `json:"affected"`
 }
 
@@ -102,6 +105,7 @@ func (m *MatchingProjection) Apply(env eventstore.Envelope) {
 			Title:       e.Title,
 			Description: e.Description,
 			CVSS:        e.CVSS,
+			Source:      e.Source,
 			Affected:    []AffectedRangeView{},
 		}
 	case vulndomain.EventVulnerabilityUpdated:
@@ -198,6 +202,20 @@ func (m *MatchingProjection) Matches(projectID string) []Match {
 		return out[i].Component < out[j].Component
 	})
 	return out
+}
+
+// Get returns the read-model view for a single vulnerability by id, or nil if
+// it does not exist (or was deleted).
+func (m *MatchingProjection) Get(id string) *VulnerabilityView {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v, ok := m.vulns[id]
+	if !ok {
+		return nil
+	}
+	copyV := *v
+	copyV.Affected = append([]AffectedRangeView(nil), v.Affected...)
+	return &copyV
 }
 
 // AllVulnerabilities returns all non-deleted vulnerabilities.

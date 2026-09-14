@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/mwildt/jansvca/service/internal/eventstore"
 )
@@ -16,12 +18,16 @@ type AffectedRange struct {
 }
 
 // Vulnerability is the aggregate root for a tracked vulnerability.
+// Source records where the vulnerability originated from ("manual" for
+// REST-API entries, "osv" for osv.dev imports); it is immutable after
+// creation.
 type Vulnerability struct {
 	ID          string
 	Identifier  string
 	Title       string
 	Description string
 	CVSS        float64
+	Source      string
 	Affected    map[string]AffectedRange
 	Deleted     bool
 	version     eventstore.Version
@@ -46,6 +52,7 @@ func (v *Vulnerability) Apply(env eventstore.Envelope) error {
 		v.Title = e.Title
 		v.Description = e.Description
 		v.CVSS = e.CVSS
+		v.Source = e.Source
 		v.Affected = map[string]AffectedRange{}
 	case EventVulnerabilityUpdated:
 		var e VulnerabilityUpdated
@@ -87,7 +94,9 @@ func (v *Vulnerability) Apply(env eventstore.Envelope) error {
 func (v *Vulnerability) Version() eventstore.Version { return v.version }
 
 // CreateVulnerability produces the events for creating a vulnerability.
-func CreateVulnerability(id, identifier, title, description string, cvss float64) ([]eventstore.PayloadEvent, error) {
+// source records the origin ("manual" for REST-API entries, "osv" for
+// osv.dev imports); an empty source defaults to "manual".
+func CreateVulnerability(id, identifier, title, description string, cvss float64, source string) ([]eventstore.PayloadEvent, error) {
 	if id == "" {
 		return nil, errors.New("schwachstellen: vulnerability id is required")
 	}
@@ -97,12 +106,16 @@ func CreateVulnerability(id, identifier, title, description string, cvss float64
 	if title == "" {
 		return nil, errors.New("schwachstellen: title is required")
 	}
+	if source == "" {
+		source = "manual"
+	}
 	return []eventstore.PayloadEvent{VulnerabilityCreated{
 		VulnerabilityID: id,
 		Identifier:      identifier,
 		Title:           title,
 		Description:     description,
 		CVSS:            cvss,
+		Source:          source,
 	}}, nil
 }
 
@@ -173,4 +186,78 @@ func (v *Vulnerability) RemoveAffectedRange(component string) ([]eventstore.Payl
 		Component:       component,
 		VersionRange:    v.Affected[component].VersionRange,
 	}}, nil
+}
+
+// AffectedRangeInput is the desired state of an affected range, used by
+// Reconcile to diff against the current aggregate state.
+type AffectedRangeInput struct {
+	Component    string
+	VersionRange string
+}
+
+// Reconcile produces the events needed to align the vulnerability with the
+// desired metadata and the desired set of affected ranges. Only changes are
+// emitted: a VulnerabilityUpdated when mutable fields differ, an
+// AffectedRangeAdded for new or changed ranges and an AffectedRangeRemoved for
+// ranges no longer present. A nil slice with no field changes yields no
+// events. The aggregate must already exist and not be deleted.
+func (v *Vulnerability) Reconcile(title, description string, cvss float64, ranges []AffectedRangeInput) ([]eventstore.PayloadEvent, error) {
+	if v == nil || v.ID == "" {
+		return nil, errors.New("schwachstellen: vulnerability not found")
+	}
+	if v.Deleted {
+		return nil, ErrVulnDeleted
+	}
+	var events []eventstore.PayloadEvent
+
+	if title != v.Title || description != v.Description || cvss != v.CVSS {
+		events = append(events, VulnerabilityUpdated{
+			VulnerabilityID: v.ID,
+			Title:           title,
+			Description:     description,
+			CVSS:            cvss,
+		})
+	}
+
+	desired := make(map[string]string, len(ranges))
+	for _, r := range ranges {
+		if r.Component == "" {
+			continue
+		}
+		if prev, dup := desired[r.Component]; dup && prev != r.VersionRange {
+			return nil, fmt.Errorf("schwachstellen: conflicting ranges for %s: %s vs %s", r.Component, prev, r.VersionRange)
+		}
+		desired[r.Component] = r.VersionRange
+	}
+
+	for _, component := range slices.Sorted(maps.Keys(v.Affected)) {
+		desiredVR, inDesired := desired[component]
+		if !inDesired {
+			events = append(events, AffectedRangeRemoved{
+				VulnerabilityID: v.ID,
+				Component:       component,
+				VersionRange:    v.Affected[component].VersionRange,
+			})
+			continue
+		}
+		if v.Affected[component].VersionRange != desiredVR {
+			events = append(events, AffectedRangeRemoved{
+				VulnerabilityID: v.ID,
+				Component:       component,
+				VersionRange:    v.Affected[component].VersionRange,
+			})
+		}
+	}
+	for _, component := range slices.Sorted(maps.Keys(desired)) {
+		existing, ok := v.Affected[component]
+		if ok && existing.VersionRange == desired[component] {
+			continue
+		}
+		events = append(events, AffectedRangeAdded{
+			VulnerabilityID: v.ID,
+			Component:       component,
+			VersionRange:    desired[component],
+		})
+	}
+	return events, nil
 }

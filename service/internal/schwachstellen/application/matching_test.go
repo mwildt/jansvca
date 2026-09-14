@@ -55,6 +55,11 @@ func TestMatchingEndToEnd(t *testing.T) {
 		t.Fatalf("add range: %v", err)
 	}
 
+	// Manually created vulnerabilities are tagged source=manual.
+	if v := matchRead.Get("v1"); v == nil || v.Source != "manual" {
+		t.Errorf("expected source=manual, got %+v", v)
+	}
+
 	matches := matchRead.Matches("p1")
 	if len(matches) != 1 {
 		t.Fatalf("expected 1 match, got %d: %+v", len(matches), matches)

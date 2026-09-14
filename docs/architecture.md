@@ -84,6 +84,19 @@ Projekt, welche Schwachstellen auf die eingesetzten Komponenten zutreffen.
 - **Eigener Eventstore.**
 - **Konsumierte Events:** vom `projekte`-Modul veröffentlichte Komponenten-Events,
   um ein Read-Model der vorhandenen Komponenten aufzubauen (für Matching).
+- **OSV-Import:** das `osv`-Paket lädt Schwachstellen von [osv.dev](https://osv.dev)
+  (GCS-Export `gs://osv-vulnerabilities`): initial die komplette Datenbank als
+  `all.zip`, danach inkrementell über `modified_id.csv` (nur Einträge neuer als der
+  letzte Sync). Der `osv/sync`-Service mappt OSV-Records auf das interne Modell
+  und upsertet sie über `CommandHandler.Import` (Create + AffectedRanges) bzw.
+  `Reconcile` (nur Änderungen). Der Sync läuft beim Start einmal initial und
+  dann im konfigurierten Intervall (Default 60 Minuten) als Hintergrund-Goroutine.
+- **Herkunft & Persistenz:** OSV-Importe werden am `VulnerabilityCreated`-Event
+  mit `source="osv"` markiert (manuelle API-Einträge erhalten `source="manual"`),
+  das Feld ist im Read-Model (`VulnerabilityView.Source`) sichtbar. Der
+  Sync-Fortschritt (höchster gesehener `modified`-Timestamp) wird in
+  `osv-sync.json` unter `JANSVCA_DATA_DIR` persistiert, sodass nach einem
+  Neustart inkrementell weitergemacht wird statt `all.zip` neu zu laden.
 
 ### `infrastruktur` (Querschnitt)
 
