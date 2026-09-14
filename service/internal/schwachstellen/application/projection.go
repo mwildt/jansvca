@@ -102,6 +102,7 @@ func (m *MatchingProjection) Apply(env eventstore.Envelope) {
 			Title:       e.Title,
 			Description: e.Description,
 			CVSS:        e.CVSS,
+			Affected:    []AffectedRangeView{},
 		}
 	case vulndomain.EventVulnerabilityUpdated:
 		var e vulndomain.VulnerabilityUpdated
