@@ -218,6 +218,9 @@ weiter; nach Anmeldung (admin/admin) erfolgt der Callback am BFF.
 | `JANSVCA_OAUTH2_INTROSPECTION_URL` | – | OAuth2-Introspection-Endpoint |
 | `JANSVCA_OAUTH2_CLIENT_ID` | – | OAuth2-Client-ID |
 | `JANSVCA_OAUTH2_CLIENT_SECRET` | – | OAuth2-Client-Secret |
+| `JANSVCA_OSV_SYNC` | `on` | OSV-Sync aktiviert (`off` deaktiviert) |
+| `JANSVCA_OSV_BASE_URL` | `https://storage.googleapis.com/osv-vulnerabilities` | Basis-URL des OSV-Daten-Exports |
+| `JANSVCA_OSV_INTERVAL` | `60m` | Aktualisierungs-Intervall der OSV-Sync (Go-Duration) |
 
 ### `/app` (BFF)
 

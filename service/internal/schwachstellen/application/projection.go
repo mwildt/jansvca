@@ -200,6 +200,20 @@ func (m *MatchingProjection) Matches(projectID string) []Match {
 	return out
 }
 
+// Get returns the read-model view for a single vulnerability by id, or nil if
+// it does not exist (or was deleted).
+func (m *MatchingProjection) Get(id string) *VulnerabilityView {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v, ok := m.vulns[id]
+	if !ok {
+		return nil
+	}
+	copyV := *v
+	copyV.Affected = append([]AffectedRangeView(nil), v.Affected...)
+	return &copyV
+}
+
 // AllVulnerabilities returns all non-deleted vulnerabilities.
 func (m *MatchingProjection) AllVulnerabilities() []VulnerabilityView {
 	m.mu.Lock()

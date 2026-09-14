@@ -5,13 +5,17 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/mwildt/jansvca/service/internal/auth"
 	"github.com/mwildt/jansvca/service/internal/eventstore"
+	"github.com/mwildt/jansvca/service/internal/osv"
+	syncpkg "github.com/mwildt/jansvca/service/internal/osv/sync"
 	projapp "github.com/mwildt/jansvca/service/internal/projekte/application"
 	vulnapp "github.com/mwildt/jansvca/service/internal/schwachstellen/application"
 	"github.com/mwildt/jansvca/service/internal/server"
@@ -67,6 +71,21 @@ func main() {
 		MatchingRead:    matchRead,
 	})
 
+	if osvSync := newOSVSync(vulnerabilities); osvSync != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			log.Printf("osv sync: initial import started")
+			n, err := osvSync.Once(ctx)
+			if err != nil {
+				log.Printf("osv sync: initial import failed: %v", err)
+			} else {
+				log.Printf("osv sync: initial import done (%d records)", n)
+			}
+			osvSync.Run(ctx)
+		}()
+	}
+
 	if introspectionURL != "" {
 		verifier := auth.NewIntrospectionVerifier(introspectionURL, clientID, clientSecret)
 		handler = auth.Middleware(verifier, handler)
@@ -83,6 +102,25 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// newOSVSync builds the osv.dev sync unless disabled via JANSVCA_OSV_SYNC=off.
+// The fetch base URL and refresh interval are configurable for development.
+func newOSVSync(store *vulnapp.CommandHandler) *syncpkg.Sync {
+	if os.Getenv("JANSVCA_OSV_SYNC") == "off" {
+		return nil
+	}
+	client := osv.NewClient()
+	if v := os.Getenv("JANSVCA_OSV_BASE_URL"); v != "" {
+		client.BaseURL = v
+	}
+	interval := time.Hour
+	if v := os.Getenv("JANSVCA_OSV_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			interval = d
+		}
+	}
+	return syncpkg.New(client, store, interval)
 }
 
 func matchProjekte(env eventstore.Envelope) bool {
