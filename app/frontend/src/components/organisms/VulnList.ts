@@ -184,7 +184,7 @@ export class JvVulnList extends LitElement {
                   <div class="meta">
                     <jv-code>${v.id}</jv-code>
                     <span>${v.identifier}</span>
-                    <span>${v.affected.length} Affected-Ranges</span>
+                    <span>${(v.affected ?? []).length} Affected-Ranges</span>
                   </div>
                   <jv-button-row style="margin-top:var(--jv-md);">
                     <jv-button @click=${() => navigate(`/vulnerabilities/${encodeURIComponent(v.id)}`)}>\u00d6ffnen</jv-button>
