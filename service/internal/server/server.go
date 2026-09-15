@@ -7,12 +7,13 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
-	"github.com/mwildt/jansvca/service/internal/eventstore"
 	projapp "github.com/mwildt/jansvca/service/internal/projekte/application"
 	"github.com/mwildt/jansvca/service/internal/sbom"
 	vulnapp "github.com/mwildt/jansvca/service/internal/schwachstellen/application"
+	"github.com/mwildt/jansvca/service/internal/schwachstellen/store"
 )
 
 // Deps bundles the collaborators required by the HTTP server.
@@ -20,7 +21,7 @@ type Deps struct {
 	Projects        *projapp.CommandHandler
 	Vulnerabilities *vulnapp.CommandHandler
 	ProjectRead     *projapp.ProjectProjection
-	MatchingRead    *vulnapp.MatchingProjection
+	VulnRead        *vulnapp.QueryService
 }
 
 // New builds and returns the mux serving all module endpoints.
@@ -162,7 +163,13 @@ func registerProjects(mux *http.ServeMux, d Deps) {
 
 func registerVulnerabilities(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("GET /api/vulnerabilities", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, d.MatchingRead.AllVulnerabilities())
+		q := vulnQueryFromRequest(r)
+		page, err := d.VulnRead.Search(q)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, page)
 	})
 	mux.HandleFunc("POST /api/vulnerabilities", func(w http.ResponseWriter, r *http.Request) {
 		var b struct {
@@ -180,7 +187,15 @@ func registerVulnerabilities(mux *http.ServeMux, d Deps) {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
-		writeJSON(w, http.StatusCreated, d.MatchingRead.AllVulnerabilities())
+		writeJSON(w, http.StatusCreated, d.VulnRead.Get(b.ID))
+	})
+	mux.HandleFunc("GET /api/vulnerabilities/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v := d.VulnRead.Get(r.PathValue("id"))
+		if v == nil {
+			writeErr(w, http.StatusNotFound, errors.New("vulnerability not found"))
+			return
+		}
+		writeJSON(w, http.StatusOK, v)
 	})
 	mux.HandleFunc("DELETE /api/vulnerabilities/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if err := d.Vulnerabilities.Delete(r.PathValue("id")); err != nil {
@@ -203,7 +218,7 @@ func registerVulnerabilities(mux *http.ServeMux, d Deps) {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
-		writeJSON(w, http.StatusCreated, d.MatchingRead.AllVulnerabilities())
+		writeJSON(w, http.StatusCreated, d.VulnRead.Get(id))
 	})
 	mux.HandleFunc("DELETE /api/vulnerabilities/{id}/affected-ranges/{component}", func(w http.ResponseWriter, r *http.Request) {
 		if err := d.Vulnerabilities.RemoveAffectedRange(r.PathValue("id"), r.PathValue("component")); err != nil {
@@ -216,7 +231,7 @@ func registerVulnerabilities(mux *http.ServeMux, d Deps) {
 
 func registerMatching(mux *http.ServeMux, d Deps) {
 	mux.HandleFunc("GET /api/projects/{id}/matches", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, d.MatchingRead.Matches(r.PathValue("id")))
+		writeJSON(w, http.StatusOK, d.VulnRead.Matches(r.PathValue("id")))
 	})
 }
 
@@ -245,5 +260,31 @@ func readBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 	return io.ReadAll(http.MaxBytesReader(w, r.Body, 10<<20))
 }
 
-// Ensure eventstore import is used (envelope types referenced transitively).
-var _ eventstore.Envelope
+// vulnQueryFromRequest parses the query/filter/paging parameters of a
+// GET /api/vulnerabilities request into a store.Query.
+func vulnQueryFromRequest(r *http.Request) store.Query {
+	q := store.Query{
+		Text:      strings.TrimSpace(r.URL.Query().Get("q")),
+		Source:    strings.TrimSpace(r.URL.Query().Get("source")),
+		Ecosystem: strings.TrimSpace(r.URL.Query().Get("ecosystem")),
+		Page:      1,
+		PageSize:  50,
+	}
+	if v := r.URL.Query().Get("page"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			q.Page = p
+		}
+	}
+	if v := r.URL.Query().Get("page_size"); v != "" {
+		if ps, err := strconv.Atoi(v); err == nil && ps > 0 && ps <= 500 {
+			q.PageSize = ps
+		}
+	}
+	if v := r.URL.Query().Get("min_cvss"); v != "" {
+		if cvss, err := strconv.ParseFloat(v, 64); err == nil {
+			q.MinCVSS = cvss
+			q.HasMinCVSS = true
+		}
+	}
+	return q
+}

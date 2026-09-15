@@ -81,27 +81,40 @@ Projekt, welche Schwachstellen auf die eingesetzten Komponenten zutreffen.
   `AffectedRange` (Komponenten-Bezeichner + semver-Range).
 - **Events:** `VulnerabilityCreated`, `VulnerabilityUpdated`,
   `VulnerabilityDeleted`, `AffectedRangeAdded`, `AffectedRangeRemoved`.
-- **Eigener Eventstore.**
-- **Konsumierte Events:** vom `projekte`-Modul veröffentlichte Komponenten-Events,
-  um ein Read-Model der vorhandenen Komponenten aufzubauen (für Matching).
+  (Die Event-Typen werden nur noch zur einmaligen Migration eines bestehenden
+  WAL in den neuen Datei-Store genutzt; das Aggregat ist jetzt zustandsbasiert.)
+- **Persistenz (Datei-Store + Bleve):** Schwachstellen werden als eine
+  JSON-Datei pro Record unter `<dataDir>/vulnerabilities/<id>.json`
+  gespeichert. Ein [Bleve](https://github.com/blevesearch/bleve)-Index unter
+  `<dataDir>/vuln-index/` übernimmt Volltextsuche, Filter (Ecosystem, Quelle,
+  CVSS-Min) und Pagination. Ein sekundärer Komponenten-Index
+  (`component -> vulnerability-IDs`) im RAM ermöglicht Matching ohne
+  Vollscan. Der Datei-Store ersetzt den früheren WAL für Schwachstellen.
+- **Konsumierte Events:** vom `projekte`-Modul veröffentlichte Komponenten-Events
+  werden von der `ProjectProjection` gelesen; die Komponenten-Map
+  (`ProjectProjection.Components`) ist der Read-Port für das Matching.
 - **OSV-Import:** das `osv`-Paket lädt Schwachstellen von [osv.dev](https://osv.dev)
   (GCS-Export `gs://osv-vulnerabilities`): initial die komplette Datenbank als
   `all.zip`, danach inkrementell über `modified_id.csv` (nur Einträge neuer als der
   letzte Sync). Der `osv/sync`-Service mappt OSV-Records auf das interne Modell
-  und upsertet sie über `CommandHandler.Import` (Create + AffectedRanges) bzw.
-  `Reconcile` (nur Änderungen). Der Sync läuft beim Start einmal initial und
-  dann im konfigurierten Intervall (Default 60 Minuten) als Hintergrund-Goroutine.
-- **Herkunft & Persistenz:** OSV-Importe werden am `VulnerabilityCreated`-Event
-  mit `source="osv"` markiert (manuelle API-Einträge erhalten `source="manual"`),
-  das Feld ist im Read-Model (`VulnerabilityView.Source`) sichtbar. Der
-  Sync-Fortschritt (höchster gesehener `modified`-Timestamp) wird in
-  `osv-sync.json` unter `JANSVCA_DATA_DIR` persistiert, sodass nach einem
-  Neustart inkrementell weitergemacht wird statt `all.zip` neu zu laden.
+  und upsertet sie über `CommandHandler.Import`. Der Sync läuft beim Start einmal
+  initial und dann im konfigurierten Intervall (Default 60 Minuten) als
+  Hintergrund-Goroutine.
+- **Herkunft & Persistenz:** OSV-Importe werden mit `source="osv"` markiert
+  (manuelle API-Einträge erhalten `source="manual"`), das Feld ist im Read-Model
+  (`VulnerabilityView.Source`) sichtbar. Der Sync-Fortschritt (höchster gesehener
+  `modified`-Timestamp) wird in `osv-sync.json` unter `JANSVCA_DATA_DIR`
+  persistiert, sodass nach einem Neustart inkrementell weitergemacht wird statt
+  `all.zip` neu zu laden.
+- **Migration:** existiert beim Start eine Legacy-`schwachstellen.wal`, wird sie
+  einmalig in den Datei-Store migriert und danach zu `schwachstellen.wal.migrated`
+  umbenannt.
 
 ### `infrastruktur` (Querschnitt)
 
-- **Eventstore-Implementierung** (WAL, append-only) – genutzt von beiden
-  Fachmodulen, jeder mit eigenem Stream/Store.
+- **Eventstore-Implementierung** (WAL, append-only) – genutzt vom
+  `projekte`-Modul (eigenem Stream/Store); das `schwachstellen`-Modul nutzt
+  stattdessen den Datei-Store + Bleve.
 - **Event Bus / Dispatcher** – asynchrone Verteilung veröffentlichter Events an
   interessierte Module.
 - **OAuth2-Authentifizierung** + einfache `Administrator`-Rolle.

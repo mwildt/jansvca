@@ -1,7 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { api } from "../../shared/api/client";
-import type { VulnerabilityView } from "../../shared/api/types";
+import type { VulnerabilityView, VulnerabilityPage } from "../../shared/api/types";
 import { navigate } from "../../shared/router";
 import { toast } from "../molecules/JvToast";
 import "../molecules/JvPageHeader";
@@ -15,7 +15,7 @@ import "../atoms/JvCode";
 import "../atoms/JvSpinner";
 import { cvssTone } from "../atoms/JvBadge";
 
-// Organism: list of vulnerabilities plus create form.
+// Organism: filtered, paginated list of vulnerabilities plus create form.
 @customElement("jv-vuln-list")
 export class JvVulnList extends LitElement {
   static styles = css`
@@ -37,6 +37,38 @@ export class JvVulnList extends LitElement {
       .form {
         grid-template-columns: 1fr;
       }
+    }
+    .filters {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 120px auto;
+      gap: var(--jv-md);
+      align-items: end;
+      background: var(--jv-surface-alt);
+      border: 1px solid var(--jv-border);
+      border-radius: var(--jv-r-md);
+      padding: var(--jv-md) var(--jv-xl);
+      margin-bottom: var(--jv-lg);
+    }
+    @media (max-width: 860px) {
+      .filters {
+        grid-template-columns: 1fr;
+      }
+    }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--jv-md);
+      margin-bottom: var(--jv-md);
+      color: var(--jv-text-muted);
+      font-size: 0.85rem;
+    }
+    .pager {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: var(--jv-md);
+      margin-top: var(--jv-xl);
     }
     .item {
       background: var(--jv-surface);
@@ -74,28 +106,56 @@ export class JvVulnList extends LitElement {
       margin-top: var(--jv-xs);
       flex-wrap: wrap;
     }
+    .ecos {
+      display: flex;
+      gap: var(--jv-xs);
+      flex-wrap: wrap;
+      margin-top: var(--jv-xs);
+    }
   `;
 
   @state() private vulns: VulnerabilityView[] = [];
+  @state() private total = 0;
   @state() private loading = true;
   @state() private form = { id: "", identifier: "", title: "", cvss: "0" };
   @state() private submitting = false;
   @state() private deleteId: string | null = null;
+  @state() private filter = { q: "", ecosystem: "", source: "", min_cvss: "" };
+  @state() private page = 1;
+  @state() private pageSize = 25;
 
   connectedCallback(): void {
     super.connectedCallback();
     this.#load();
   }
 
+  #appliedFilter() {
+    return {
+      q: this.filter.q.trim() || undefined,
+      ecosystem: this.filter.ecosystem.trim() || undefined,
+      source: this.filter.source.trim() || undefined,
+      min_cvss: this.filter.min_cvss ? Number(this.filter.min_cvss) : undefined,
+      page: this.page,
+      page_size: this.pageSize,
+    };
+  }
+
   async #load(): Promise<void> {
     this.loading = true;
     try {
-      this.vulns = await api.listVulnerabilities();
+      const res: VulnerabilityPage = await api.listVulnerabilities(this.#appliedFilter());
+      this.vulns = res.items ?? [];
+      this.total = res.total ?? 0;
     } catch (e) {
       toast((e as Error).message, "error");
     } finally {
       this.loading = false;
     }
+  }
+
+  async #applyFilter(): Promise<void> {
+    this.page = 1;
+    await this.#load();
   }
 
   async #submit(): Promise<void> {
@@ -128,16 +188,58 @@ export class JvVulnList extends LitElement {
     try {
       await api.deleteVulnerability(id);
       await this.#load();
-      toast("Schwachstelle gel\u00f6scht", "success");
+      toast("Schwachstelle gelöscht", "success");
     } catch (e) {
       toast((e as Error).message, "error");
     }
   }
 
+  #changePage(delta: number): void {
+    const next = this.page + delta;
+    if (next < 1) return;
+    const maxPage = Math.max(1, Math.ceil(this.total / this.pageSize));
+    if (next > maxPage) return;
+    this.page = next;
+    this.#load();
+  }
+
+  get #maxPage(): number {
+    return Math.max(1, Math.ceil(this.total / this.pageSize));
+  }
+
   render() {
     return html`
       <jv-page-header heading="Schwachstellen"></jv-page-header>
-
+      <div class="filters">
+        <jv-input
+          label="Suche"
+          placeholder="Titel, Identifier, ID"
+          .value=${this.filter.q}
+          @change=${(e: CustomEvent<{ value: string }>) => (this.filter.q = e.detail.value)}
+          @keyup=${(e: KeyboardEvent) => {
+            if (e.key === "Enter") this.#applyFilter();
+          }}
+        ></jv-input>
+        <jv-input
+          label="Ecosystem"
+          placeholder="npm, PyPI …"
+          .value=${this.filter.ecosystem}
+          @change=${(e: CustomEvent<{ value: string }>) => (this.filter.ecosystem = e.detail.value)}
+        ></jv-input>
+        <jv-input
+          label="Quelle"
+          placeholder="osv, manual"
+          .value=${this.filter.source}
+          @change=${(e: CustomEvent<{ value: string }>) => (this.filter.source = e.detail.value)}
+        ></jv-input>
+        <jv-input
+          label="Min. CVSS"
+          type="number"
+          .value=${this.filter.min_cvss}
+          @change=${(e: CustomEvent<{ value: string }>) => (this.filter.min_cvss = e.detail.value)}
+        ></jv-input>
+        <jv-button variant="primary" @click=${() => this.#applyFilter()}>Filter</jv-button>
+      </div>
       <div class="form">
         <jv-input
           label="ID"
@@ -166,13 +268,16 @@ export class JvVulnList extends LitElement {
           Anlegen
         </jv-button>
       </div>
-
+      <div class="toolbar">
+        <span>${this.total} Schwachstellen</span>
+        <span>Seite ${this.page} / ${this.#maxPage}</span>
+      </div>
       ${this.loading
         ? html`<jv-spinner></jv-spinner>`
         : this.vulns.length === 0
           ? html`<jv-empty
               heading="Keine Schwachstellen"
-              message="Lege eine Schwachstelle \u00fcber das Formular an."
+              message="Lege eine Schwachstelle über das Formular an oder passe den Filter an."
             ></jv-empty>`
           : this.vulns.map(
               (v) => html`
@@ -185,19 +290,31 @@ export class JvVulnList extends LitElement {
                     <jv-code>${v.id}</jv-code>
                     <span>${v.identifier}</span>
                     <span>${(v.affected ?? []).length} Affected-Ranges</span>
+                    ${v.source ? html`<span>Quelle: ${v.source}</span>` : null}
                   </div>
+                  ${(v.ecosystems ?? []).length > 0
+                    ? html`<div class="ecos">
+                        ${v.ecosystems.map((e) => html`<jv-badge>${e}</jv-badge>`)}
+                      </div>`
+                    : null}
                   <jv-button-row style="margin-top:var(--jv-md);">
-                    <jv-button @click=${() => navigate(`/vulnerabilities/${encodeURIComponent(v.id)}`)}>\u00d6ffnen</jv-button>
-                    <jv-button variant="danger" @click=${() => (this.deleteId = v.id)}>L\u00f6schen</jv-button>
+                    <jv-button @click=${() => navigate(`/vulnerabilities/${encodeURIComponent(v.id)}`)}>Öffnen</jv-button>
+                    <jv-button variant="danger" @click=${() => (this.deleteId = v.id)}>Löschen</jv-button>
                   </jv-button-row>
                 </div>
               `,
             )}
-
+      ${this.total > this.pageSize
+        ? html`<div class="pager">
+            <jv-button ?disabled=${this.page <= 1} @click=${() => this.#changePage(-1)}>Zurück</jv-button>
+            <span>Seite ${this.page} / ${this.#maxPage}</span>
+            <jv-button ?disabled=${this.page >= this.#maxPage} @click=${() => this.#changePage(1)}>Weiter</jv-button>
+          </div>`
+        : null}
       <jv-confirm-dialog
         .open=${this.deleteId !== null}
-        heading="Schwachstelle l\u00f6schen?"
-        message="Die Schwachstelle wird soft-deleted."
+        heading="Schwachstelle löschen?"
+        message="Die Schwachstelle wird gelöscht."
         @confirm=${() => this.#confirmDelete()}
         @cancel=${() => (this.deleteId = null)}
       ></jv-confirm-dialog>

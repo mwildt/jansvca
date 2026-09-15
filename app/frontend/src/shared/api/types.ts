@@ -1,6 +1,5 @@
 // Mirror of the backend read-model types (see /service projection.go). The
 // frontend only knows these shapes; it never references Go internals.
-
 export interface ComponentView {
   component: string;
   version: string;
@@ -16,6 +15,7 @@ export interface ProjectView {
 export interface AffectedRangeView {
   component: string;
   version_range: string;
+  ecosystem?: string;
 }
 
 export interface VulnerabilityView {
@@ -24,7 +24,25 @@ export interface VulnerabilityView {
   title: string;
   description: string;
   cvss: number;
+  source: string;
+  ecosystems: string[];
   affected: AffectedRangeView[];
+}
+
+// A paginated page of vulnerabilities, as returned by
+// GET /api/vulnerabilities (now backed by the Bleve search index).
+export interface VulnerabilityPage {
+  items: VulnerabilityView[];
+  total: number;
+}
+
+export interface VulnerabilityQuery {
+  q?: string;
+  source?: string;
+  ecosystem?: string;
+  min_cvss?: number;
+  page?: number;
+  page_size?: number;
 }
 
 export interface Match {
