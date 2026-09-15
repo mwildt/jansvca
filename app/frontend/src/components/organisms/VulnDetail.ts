@@ -75,11 +75,11 @@ export class JvVulnDetail extends LitElement {
     if (!this.vulnId) return;
     this.loading = true;
     try {
-      const all = await api.listVulnerabilities();
-      const found = all.find((v) => v.id === this.vulnId) ?? null;
+      const found = await api.getVulnerability(this.vulnId);
       if (found) found.affected = found.affected ?? [];
       this.vuln = found;
     } catch (e) {
+      this.vuln = null;
       toast((e as Error).message, "error");
     } finally {
       this.loading = false;

@@ -7,6 +7,8 @@ import type {
   Match,
   ProjectView,
   SbomImportResult,
+  VulnerabilityPage,
+  VulnerabilityQuery,
   VulnerabilityView,
 } from "./types";
 
@@ -138,17 +140,28 @@ export const api = {
   },
 
   // --- vulnerabilities --------------------------------------------------
-  listVulnerabilities(): Promise<VulnerabilityView[]> {
-    return request<VulnerabilityView[]>("GET", "/api/vulnerabilities");
+  listVulnerabilities(query?: VulnerabilityQuery): Promise<VulnerabilityPage> {
+    const params = new URLSearchParams();
+    if (query?.q) params.set("q", query.q);
+    if (query?.source) params.set("source", query.source);
+    if (query?.ecosystem) params.set("ecosystem", query.ecosystem);
+    if (query?.min_cvss !== undefined) params.set("min_cvss", String(query.min_cvss));
+    if (query?.page) params.set("page", String(query.page));
+    if (query?.page_size) params.set("page_size", String(query.page_size));
+    const qs = params.toString();
+    return request<VulnerabilityPage>("GET", "/api/vulnerabilities" + (qs ? `?${qs}` : ""));
   },
-  createVulnerability(v: NewVulnerability): Promise<VulnerabilityView[]> {
-    return request<VulnerabilityView[]>("POST", "/api/vulnerabilities", v);
+  getVulnerability(id: string): Promise<VulnerabilityView> {
+    return request<VulnerabilityView>("GET", `/api/vulnerabilities/${encodeURIComponent(id)}`);
+  },
+  createVulnerability(v: NewVulnerability): Promise<VulnerabilityView> {
+    return request<VulnerabilityView>("POST", "/api/vulnerabilities", v);
   },
   deleteVulnerability(id: string): Promise<void> {
     return request<void>("DELETE", `/api/vulnerabilities/${encodeURIComponent(id)}`);
   },
-  addAffectedRange(id: string, r: NewAffectedRange): Promise<VulnerabilityView[]> {
-    return request<VulnerabilityView[]>(
+  addAffectedRange(id: string, r: NewAffectedRange): Promise<VulnerabilityView> {
+    return request<VulnerabilityView>(
       "POST",
       `/api/vulnerabilities/${encodeURIComponent(id)}/affected-ranges`,
       r,
@@ -162,4 +175,12 @@ export const api = {
   },
 };
 
-export type { AffectedRangeView, Match, ProjectView, SbomImportResult, VulnerabilityView };
+export type {
+  AffectedRangeView,
+  Match,
+  ProjectView,
+  SbomImportResult,
+  VulnerabilityPage,
+  VulnerabilityQuery,
+  VulnerabilityView,
+};

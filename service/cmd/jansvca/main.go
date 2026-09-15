@@ -1,7 +1,8 @@
 // Command jansvca starts the Schwachstellen-Tracking server. It wires the
-// hexagonal modules (projekte, schwachstellen) with per-module WAL event
-// stores, an in-memory event bus feeding the read-model projections, and
-// OAuth2 authentication.
+// hexagonal modules: projekte uses a WAL event store with an in-memory event
+// bus feeding the project read-model projection; schwachstellen persists
+// vulnerabilities as JSON files with a Bleve search index (file-based store),
+// replacing the former WAL. OAuth2 authentication guards the HTTP API.
 package main
 
 import (
@@ -18,6 +19,8 @@ import (
 	syncpkg "github.com/mwildt/jansvca/service/internal/osv/sync"
 	projapp "github.com/mwildt/jansvca/service/internal/projekte/application"
 	vulnapp "github.com/mwildt/jansvca/service/internal/schwachstellen/application"
+	"github.com/mwildt/jansvca/service/internal/schwachstellen/migration"
+	vulnstore "github.com/mwildt/jansvca/service/internal/schwachstellen/store"
 	"github.com/mwildt/jansvca/service/internal/server"
 )
 
@@ -29,46 +32,46 @@ func main() {
 	clientSecret := os.Getenv("JANSVCA_OAUTH2_CLIENT_SECRET")
 
 	bus := eventstore.NewBus()
-
 	projStore, err := eventstore.New(filepath.Join(dataDir, "projekte.wal"))
 	if err != nil {
 		log.Fatalf("open projekte store: %v", err)
 	}
-	vulnStore, err := eventstore.New(filepath.Join(dataDir, "schwachstellen.wal"))
-	if err != nil {
-		log.Fatalf("open schwachstellen store: %v", err)
-	}
-
 	projRead := projapp.NewProjectProjection()
-	matchRead := vulnapp.NewMatchingProjection()
-
-	// Rebuild read models from existing WALs.
 	for _, env := range projStore.All() {
 		projRead.Apply(env)
-		matchRead.Apply(env)
 	}
-	for _, env := range vulnStore.All() {
-		matchRead.Apply(env)
-	}
-
-	// Subscribe projections: projekte events feed both the project read model
-	// and the matching projection's component model.
 	bus.Subscribe(matchProjekte, func(env eventstore.Envelope) {
 		projRead.Apply(env)
-		matchRead.Apply(env)
 	})
-	bus.Subscribe(matchSchwachstellen, func(env eventstore.Envelope) {
-		matchRead.Apply(env)
-	})
-
 	projects := projapp.NewCommandHandler(projStore, bus)
-	vulnerabilities := vulnapp.NewCommandHandler(vulnStore, bus)
+
+	// Schwachstellen: file-based store (JSON files + Bleve index). If a legacy
+	// WAL exists, migrate it once into the store, then the WAL is no longer
+	// used for vulnerabilities.
+	vulnStore, err := vulnstore.New(dataDir)
+	if err != nil {
+		log.Fatalf("open schwachstellen store: %v", err)
+		return
+	}
+	if walPath := filepath.Join(dataDir, "schwachstellen.wal"); fileExists(walPath) {
+		if legacy, err := eventstore.New(walPath); err == nil {
+			if n, err := migration.FromWAL(legacy, vulnStore); err != nil {
+				log.Printf("osv migration: %v", err)
+			} else if n > 0 {
+				log.Printf("osv migration: %d records imported from legacy WAL", n)
+			}
+			_ = legacy.Close()
+			_ = os.Rename(walPath, walPath+".migrated")
+		}
+	}
+	vulnerabilities := vulnapp.NewCommandHandler(vulnStore)
+	vulnRead := vulnapp.NewQueryService(vulnStore, projRead)
 
 	handler := server.New(server.Deps{
 		Projects:        projects,
 		Vulnerabilities: vulnerabilities,
 		ProjectRead:     projRead,
-		MatchingRead:    matchRead,
+		VulnRead:        vulnRead,
 	})
 
 	if osvSync := newOSVSync(vulnerabilities, dataDir); osvSync != nil {
@@ -129,7 +132,7 @@ func matchProjekte(env eventstore.Envelope) bool {
 	return len(env.Type) >= len(prefix) && env.Type[:len(prefix)] == prefix
 }
 
-func matchSchwachstellen(env eventstore.Envelope) bool {
-	prefix := "schwachstellen."
-	return len(env.Type) >= len(prefix) && env.Type[:len(prefix)] == eventstore.EventType(prefix)
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

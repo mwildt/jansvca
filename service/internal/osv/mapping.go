@@ -4,9 +4,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/mwildt/jansvca/service/internal/eventstore"
-	"github.com/mwildt/jansvca/service/internal/schwachstellen/domain"
 )
 
 // ImportRecord is the internal representation of an OSV record, normalized for
@@ -25,10 +22,12 @@ type ImportRecord struct {
 }
 
 // AffectedRange is one (component, version-range) pair derived from an OSV
-// affected entry.
+// affected entry. Ecosystem is the OSV ecosystem of the package (e.g. "npm",
+// "PyPI"), used for ecosystem filtering and indexing.
 type AffectedRange struct {
 	Component    string
 	VersionRange string
+	Ecosystem    string
 }
 
 // Map converts an OSV Record into the internal ImportRecord. OSV records
@@ -65,31 +64,12 @@ func Map(r Record) ImportRecord {
 				out.Affected = append(out.Affected, AffectedRange{
 					Component:    component,
 					VersionRange: vr,
+					Ecosystem:    a.Package.Ecosystem,
 				})
 			}
 		}
 	}
 	return out
-}
-
-// ToCreate produces the domain events to create a vulnerability with its
-// affected ranges in a single stream. It returns the create event followed by
-// one AffectedRangeAdded per range, mirroring the schwachstellen event model.
-func (i ImportRecord) ToCreate() ([]eventstore.PayloadEvent, error) {
-	events := make([]eventstore.PayloadEvent, 0, 1+len(i.Affected))
-	created, err := domain.CreateVulnerability(i.ID, i.Identifier, i.Title, i.Description, i.CVSS, i.Source)
-	if err != nil {
-		return nil, err
-	}
-	events = append(events, created...)
-	for _, a := range i.Affected {
-		events = append(events, domain.AffectedRangeAdded{
-			VulnerabilityID: i.ID,
-			Component:       a.Component,
-			VersionRange:    a.VersionRange,
-		})
-	}
-	return events, nil
 }
 
 // rangeFromEvents translates an OSV event sequence into a semver range

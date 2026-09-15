@@ -1,7 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { api } from "../../shared/api/client";
-import type { ProjectView, VulnerabilityView } from "../../shared/api/types";
+import type { ProjectView } from "../../shared/api/types";
 import { navigate } from "../../shared/router";
 import "../molecules/JvPageHeader";
 import "../molecules/JvStatGrid";
@@ -45,10 +45,10 @@ export class JvDashboard extends LitElement {
     try {
       const [p, v] = await Promise.all([
         api.listProjects().catch(() => [] as ProjectView[]),
-        api.listVulnerabilities().catch(() => [] as VulnerabilityView[]),
+        api.listVulnerabilities({ page_size: 1 }).catch(() => ({ items: [], total: 0 })),
       ]);
       this.projects = p.length;
-      this.vulns = v.length;
+      this.vulns = v.total;
     } finally {
       this.loading = false;
     }

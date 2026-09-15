@@ -7,40 +7,32 @@ import (
 	"github.com/mwildt/jansvca/service/internal/eventstore"
 	projapp "github.com/mwildt/jansvca/service/internal/projekte/application"
 	vulnapp "github.com/mwildt/jansvca/service/internal/schwachstellen/application"
+	vulnstore "github.com/mwildt/jansvca/service/internal/schwachstellen/store"
 )
 
 func TestMatchingEndToEnd(t *testing.T) {
 	dir := t.TempDir()
 	bus := eventstore.NewBus()
-
 	projStore, err := eventstore.New(filepath.Join(dir, "projekte.wal"))
 	if err != nil {
 		t.Fatalf("proj store: %v", err)
 	}
-	vulnStore, err := eventstore.New(filepath.Join(dir, "schwachstellen.wal"))
-	if err != nil {
-		t.Fatalf("vuln store: %v", err)
-	}
-
 	projRead := projapp.NewProjectProjection()
-	matchRead := vulnapp.NewMatchingProjection()
-
 	bus.Subscribe(func(env eventstore.Envelope) bool {
 		p := eventstore.EventType("projekte.")
 		return len(env.Type) >= len(p) && env.Type[:len(p)] == p
 	}, func(env eventstore.Envelope) {
 		projRead.Apply(env)
-		matchRead.Apply(env)
 	})
-	bus.Subscribe(func(env eventstore.Envelope) bool {
-		p := eventstore.EventType("schwachstellen.")
-		return len(env.Type) >= len(p) && env.Type[:len(p)] == p
-	}, func(env eventstore.Envelope) {
-		matchRead.Apply(env)
-	})
-
 	projects := projapp.NewCommandHandler(projStore, bus)
-	vulns := vulnapp.NewCommandHandler(vulnStore, bus)
+
+	s, err := vulnstore.New(dir)
+	if err != nil {
+		t.Fatalf("vuln store: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	vulns := vulnapp.NewCommandHandler(s)
+	matchRead := vulnapp.NewQueryService(s, projRead)
 
 	if err := projects.CreateProject("p1", "Projekt Eins", "desc"); err != nil {
 		t.Fatalf("create project: %v", err)
@@ -55,11 +47,9 @@ func TestMatchingEndToEnd(t *testing.T) {
 		t.Fatalf("add range: %v", err)
 	}
 
-	// Manually created vulnerabilities are tagged source=manual.
 	if v := matchRead.Get("v1"); v == nil || v.Source != "manual" {
 		t.Errorf("expected source=manual, got %+v", v)
 	}
-
 	matches := matchRead.Matches("p1")
 	if len(matches) != 1 {
 		t.Fatalf("expected 1 match, got %d: %+v", len(matches), matches)
@@ -75,7 +65,6 @@ func TestMatchingEndToEnd(t *testing.T) {
 		t.Errorf("expected 1 project in read model, got %d", got)
 	}
 
-	// Soft-delete project: read model hides it; matching has no components.
 	if err := projects.Delete("p1"); err != nil {
 		t.Fatalf("delete project: %v", err)
 	}
@@ -86,7 +75,6 @@ func TestMatchingEndToEnd(t *testing.T) {
 		t.Errorf("expected 0 matches after project delete, got %d", got)
 	}
 
-	// Update component version outside the range -> no match after re-adding.
 	if err := projects.CreateProject("p2", "Projekt Zwei", ""); err != nil {
 		t.Fatalf("create project p2: %v", err)
 	}

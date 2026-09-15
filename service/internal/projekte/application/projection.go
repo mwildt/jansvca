@@ -133,3 +133,20 @@ func (p *ProjectProjection) Get(id string) *ProjectView {
 	}
 	return nil
 }
+
+// Components returns the component->version map for a project, or nil if the
+// project does not exist. It is the read port consumed by the schwachstellen
+// matching query service.
+func (p *ProjectProjection) Components(projectID string) map[string]string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	v, ok := p.projects[projectID]
+	if !ok {
+		return nil
+	}
+	out := make(map[string]string, len(v.Components))
+	for _, c := range v.Components {
+		out[c.Component] = c.Version
+	}
+	return out
+}

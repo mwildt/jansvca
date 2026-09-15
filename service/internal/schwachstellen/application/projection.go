@@ -1,13 +1,9 @@
 package application
 
 import (
-	"encoding/json"
 	"sort"
-	"sync"
 
-	"github.com/mwildt/jansvca/service/internal/eventstore"
-	"github.com/mwildt/jansvca/service/internal/projekte/domain"
-	vulndomain "github.com/mwildt/jansvca/service/internal/schwachstellen/domain"
+	"github.com/mwildt/jansvca/service/internal/schwachstellen/store"
 	"github.com/mwildt/jansvca/service/internal/semver"
 )
 
@@ -21,6 +17,7 @@ type VulnerabilityView struct {
 	Description string              `json:"description"`
 	CVSS        float64             `json:"cvss"`
 	Source      string              `json:"source"`
+	Ecosystems  []string            `json:"ecosystems"`
 	Affected    []AffectedRangeView `json:"affected"`
 }
 
@@ -28,6 +25,7 @@ type VulnerabilityView struct {
 type AffectedRangeView struct {
 	Component    string `json:"component"`
 	VersionRange string `json:"version_range"`
+	Ecosystem    string `json:"ecosystem,omitempty"`
 }
 
 // Match is a single vulnerability hit for a project component.
@@ -40,131 +38,67 @@ type Match struct {
 	CVSS                    float64 `json:"cvss"`
 }
 
-// MatchingProjection builds the read model for vulnerabilities and project
-// components and computes matches between them. It subscribes to both the
-// schwachstellen and projekte event streams.
-type MatchingProjection struct {
-	mu         sync.Mutex
-	vulns      map[string]*VulnerabilityView
-	components map[string]map[string]string // projectID -> component -> version
+// VulnerabilityPage is a paginated slice of vulnerabilities plus the total
+// number of matching records across all pages.
+type VulnerabilityPage struct {
+	Items []VulnerabilityView `json:"items"`
+	Total uint64              `json:"total"`
 }
 
-// NewMatchingProjection creates an empty projection.
-func NewMatchingProjection() *MatchingProjection {
-	return &MatchingProjection{
-		vulns:      map[string]*VulnerabilityView{},
-		components: map[string]map[string]string{},
-	}
+// QueryService is the read side of the schwachstellen module. It serves
+// vulnerability lookups, filtered/paginated search and project matching from
+// the file-based store.
+type QueryService struct {
+	store *store.Store
+	// projects is an optional read port for the project component model,
+	// used by Matches. When nil, Matches returns an empty slice.
+	projects ProjectComponents
 }
 
-// Apply applies a single envelope from either module's event stream.
-func (m *MatchingProjection) Apply(env eventstore.Envelope) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	switch env.Type {
-	case domain.EventComponentAdded:
-		var e domain.ComponentAdded
-		if err := json.Unmarshal(env.Payload, &e); err != nil {
-			return
-		}
-		if m.components[e.ProjectID] == nil {
-			m.components[e.ProjectID] = map[string]string{}
-		}
-		m.components[e.ProjectID][e.Component] = e.Version
-	case domain.EventComponentRemoved:
-		var e domain.ComponentRemoved
-		if err := json.Unmarshal(env.Payload, &e); err != nil {
-			return
-		}
-		if comps, ok := m.components[e.ProjectID]; ok {
-			delete(comps, e.Component)
-		}
-	case domain.EventComponentVersionUpdated:
-		var e domain.ComponentVersionUpdated
-		if err := json.Unmarshal(env.Payload, &e); err != nil {
-			return
-		}
-		if comps, ok := m.components[e.ProjectID]; ok {
-			comps[e.Component] = e.Version
-		}
-	case domain.EventProjectDeleted:
-		var e domain.ProjectDeleted
-		if err := json.Unmarshal(env.Payload, &e); err != nil {
-			return
-		}
-		delete(m.components, e.ProjectID)
+// ProjectComponents is the read port for the project component model owned by
+// the projekte module.
+type ProjectComponents interface {
+	Components(projectID string) map[string]string
+}
 
-	case vulndomain.EventVulnerabilityCreated:
-		var e vulndomain.VulnerabilityCreated
-		if err := json.Unmarshal(env.Payload, &e); err != nil {
-			return
-		}
-		m.vulns[e.VulnerabilityID] = &VulnerabilityView{
-			ID:          e.VulnerabilityID,
-			Identifier:  e.Identifier,
-			Title:       e.Title,
-			Description: e.Description,
-			CVSS:        e.CVSS,
-			Source:      e.Source,
-			Affected:    []AffectedRangeView{},
-		}
-	case vulndomain.EventVulnerabilityUpdated:
-		var e vulndomain.VulnerabilityUpdated
-		if err := json.Unmarshal(env.Payload, &e); err != nil {
-			return
-		}
-		if v, ok := m.vulns[e.VulnerabilityID]; ok {
-			if e.Title != "" {
-				v.Title = e.Title
-			}
-			if e.Description != "" {
-				v.Description = e.Description
-			}
-			if e.CVSS != 0 {
-				v.CVSS = e.CVSS
-			}
-		}
-	case vulndomain.EventVulnerabilityDeleted:
-		var e vulndomain.VulnerabilityDeleted
-		if err := json.Unmarshal(env.Payload, &e); err != nil {
-			return
-		}
-		delete(m.vulns, e.VulnerabilityID)
-	case vulndomain.EventAffectedRangeAdded:
-		var e vulndomain.AffectedRangeAdded
-		if err := json.Unmarshal(env.Payload, &e); err != nil {
-			return
-		}
-		if v, ok := m.vulns[e.VulnerabilityID]; ok {
-			v.Affected = append(v.Affected, AffectedRangeView{
-				Component:    e.Component,
-				VersionRange: e.VersionRange,
-			})
-		}
-	case vulndomain.EventAffectedRangeRemoved:
-		var e vulndomain.AffectedRangeRemoved
-		if err := json.Unmarshal(env.Payload, &e); err != nil {
-			return
-		}
-		if v, ok := m.vulns[e.VulnerabilityID]; ok {
-			out := v.Affected[:0]
-			for _, a := range v.Affected {
-				if a.Component != e.Component {
-					out = append(out, a)
-				}
-			}
-			v.Affected = out
-		}
+// NewQueryService creates a query service over the given store. projects is
+// optional; pass nil when matching is not required.
+func NewQueryService(s *store.Store, projects ProjectComponents) *QueryService {
+	return &QueryService{store: s, projects: projects}
+}
+
+// Get returns the read-model view for a single vulnerability by id, or nil if
+// it does not exist (or was deleted).
+func (q *QueryService) Get(id string) *VulnerabilityView {
+	rec, err := q.store.Get(id)
+	if err != nil || rec == nil {
+		return nil
 	}
+	return recordToView(rec)
+}
+
+// Search runs a filtered, paginated vulnerability search via the Bleve index.
+func (q *QueryService) Search(qry store.Query) (VulnerabilityPage, error) {
+	res, err := q.store.Query(qry)
+	if err != nil {
+		return VulnerabilityPage{}, err
+	}
+	page := VulnerabilityPage{Total: res.Total, Items: make([]VulnerabilityView, 0, len(res.Items))}
+	for i := range res.Items {
+		page.Items = append(page.Items, *recordToView(&res.Items[i]))
+	}
+	return page, nil
 }
 
 // Matches returns all vulnerability matches for a given project, sorted by
-// CVSS descending then component.
-func (m *MatchingProjection) Matches(projectID string) []Match {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	comps, ok := m.components[projectID]
-	if !ok {
+// CVSS descending then component. It uses the component index to avoid
+// scanning the whole corpus.
+func (q *QueryService) Matches(projectID string) []Match {
+	if q.projects == nil {
+		return []Match{}
+	}
+	comps := q.projects.Components(projectID)
+	if len(comps) == 0 {
 		return []Match{}
 	}
 	out := make([]Match, 0)
@@ -173,8 +107,13 @@ func (m *MatchingProjection) Matches(projectID string) []Match {
 		if err != nil {
 			continue
 		}
-		for _, v := range m.vulns {
-			for _, a := range v.Affected {
+		ids := q.store.ComponentsFor(component)
+		for _, id := range ids {
+			rec, err := q.store.Get(id)
+			if err != nil || rec == nil {
+				continue
+			}
+			for _, a := range rec.Affected {
 				if a.Component != component {
 					continue
 				}
@@ -187,9 +126,9 @@ func (m *MatchingProjection) Matches(projectID string) []Match {
 						ProjectID:               projectID,
 						Component:               component,
 						Version:                 version,
-						VulnerabilityID:         v.ID,
-						VulnerabilityIdentifier: v.Identifier,
-						CVSS:                    v.CVSS,
+						VulnerabilityID:         rec.ID,
+						VulnerabilityIdentifier: rec.Identifier,
+						CVSS:                    rec.CVSS,
 					})
 				}
 			}
@@ -204,30 +143,24 @@ func (m *MatchingProjection) Matches(projectID string) []Match {
 	return out
 }
 
-// Get returns the read-model view for a single vulnerability by id, or nil if
-// it does not exist (or was deleted).
-func (m *MatchingProjection) Get(id string) *VulnerabilityView {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	v, ok := m.vulns[id]
-	if !ok {
-		return nil
+// recordToView converts a store record to a read-model view.
+func recordToView(rec *store.Record) *VulnerabilityView {
+	v := &VulnerabilityView{
+		ID:          rec.ID,
+		Identifier:  rec.Identifier,
+		Title:       rec.Title,
+		Description: rec.Description,
+		CVSS:        rec.CVSS,
+		Source:      rec.Source,
+		Ecosystems:  rec.Ecosystems,
+		Affected:    make([]AffectedRangeView, 0, len(rec.Affected)),
 	}
-	copyV := *v
-	copyV.Affected = append([]AffectedRangeView(nil), v.Affected...)
-	return &copyV
-}
-
-// AllVulnerabilities returns all non-deleted vulnerabilities.
-func (m *MatchingProjection) AllVulnerabilities() []VulnerabilityView {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make([]VulnerabilityView, 0, len(m.vulns))
-	for _, v := range m.vulns {
-		copyV := *v
-		copyV.Affected = append([]AffectedRangeView(nil), v.Affected...)
-		out = append(out, copyV)
+	for _, a := range rec.Affected {
+		v.Affected = append(v.Affected, AffectedRangeView{
+			Component:    a.Component,
+			VersionRange: a.VersionRange,
+			Ecosystem:    a.Ecosystem,
+		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
+	return v
 }

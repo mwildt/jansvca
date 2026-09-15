@@ -172,6 +172,7 @@ func (s *Sync) upsert(ctx context.Context, imp osv.ImportRecord) error {
 		ranges = append(ranges, vulnapp.AffectedRangeInput{
 			Component:    a.Component,
 			VersionRange: a.VersionRange,
+			Ecosystem:    a.Ecosystem,
 		})
 	}
 	return s.Store.Import(imp.ID, imp.Identifier, imp.Title, imp.Description, imp.CVSS, imp.Source, ranges)

@@ -11,6 +11,7 @@ import (
 	"github.com/mwildt/jansvca/service/internal/eventstore"
 	projapp "github.com/mwildt/jansvca/service/internal/projekte/application"
 	vulnapp "github.com/mwildt/jansvca/service/internal/schwachstellen/application"
+	vulnstore "github.com/mwildt/jansvca/service/internal/schwachstellen/store"
 	"github.com/mwildt/jansvca/service/internal/server"
 )
 
@@ -27,32 +28,26 @@ func setupHandler(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	vulnStore, err := eventstore.New(filepath.Join(dir, "vuln.wal"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	projRead := projapp.NewProjectProjection()
-	matchRead := vulnapp.NewMatchingProjection()
-
 	bus.Subscribe(func(env eventstore.Envelope) bool {
 		p := eventstore.EventType("projekte.")
 		return len(env.Type) >= len(p) && env.Type[:len(p)] == p
 	}, func(env eventstore.Envelope) {
 		projRead.Apply(env)
-		matchRead.Apply(env)
 	})
-	bus.Subscribe(func(env eventstore.Envelope) bool {
-		p := eventstore.EventType("schwachstellen.")
-		return len(env.Type) >= len(p) && env.Type[:len(p)] == p
-	}, func(env eventstore.Envelope) {
-		matchRead.Apply(env)
-	})
-
+	projects := projapp.NewCommandHandler(projStore, bus)
+	vs, err := vulnstore.New(dir)
+	if err != nil {
+		t.Fatalf("vuln store: %v", err)
+	}
+	t.Cleanup(func() { _ = vs.Close() })
+	vulns := vulnapp.NewCommandHandler(vs)
+	vulnRead := vulnapp.NewQueryService(vs, projRead)
 	return server.New(server.Deps{
-		Projects:        projapp.NewCommandHandler(projStore, bus),
-		Vulnerabilities: vulnapp.NewCommandHandler(vulnStore, bus),
+		Projects:        projects,
+		Vulnerabilities: vulns,
 		ProjectRead:     projRead,
-		MatchingRead:    matchRead,
+		VulnRead:        vulnRead,
 	})
 }
 
