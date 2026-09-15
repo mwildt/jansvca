@@ -54,8 +54,23 @@ func (c *Client) FetchAllZip(ctx context.Context) ([]Record, error) {
 	return ParseRecordsFromZip(rc)
 }
 
-// FetchModifiedSince lists the modified_id.csv index and returns the entries
-// strictly newer than since.
+// FetchEcosystemZip downloads the all.zip archive for a single ecosystem
+// (e.g. "Go", "PyPI") and returns the parsed records. The OSV bucket exposes
+// gs://osv-vulnerabilities/<ECOSYSTEM>/all.zip with only that ecosystem's
+// records, so a sync configured for a small set of ecosystems avoids
+// downloading the full global archive.
+func (c *Client) FetchEcosystemZip(ctx context.Context, ecosystem string) ([]Record, error) {
+	rc, err := c.fetch(ctx, "/"+ecosystem+"/all.zip")
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return ParseRecordsFromZip(rc)
+}
+
+// FetchModifiedSince lists the top-level modified_id.csv index and returns the
+// entries strictly newer than since. Paths in the top-level index include
+// the ecosystem prefix (e.g. "PyPI/PYSEC-2021-123").
 func (c *Client) FetchModifiedSince(ctx context.Context, since time.Time) ([]ModifiedEntry, error) {
 	rc, err := c.fetch(ctx, "/modified_id.csv")
 	if err != nil {
@@ -65,8 +80,24 @@ func (c *Client) FetchModifiedSince(ctx context.Context, since time.Time) ([]Mod
 	return ReadModifiedSince(rc, since)
 }
 
-// FetchRecord downloads a single record JSON by its index path (as returned by
-// FetchModifiedSince, e.g. "PyPI/PYSEC-2021-123").
+// FetchEcosystemModifiedSince lists the per-ecosystem modified_id.csv index
+// and returns the entries strictly newer than since. The per-ecosystem CSV
+// omits the ecosystem prefix in the path column (e.g. "PYSEC-2021-123" rather
+// than "PyPI/PYSEC-2021-123"); callers must prepend the ecosystem when
+// fetching individual records.
+func (c *Client) FetchEcosystemModifiedSince(ctx context.Context, ecosystem string, since time.Time) ([]ModifiedEntry, error) {
+	rc, err := c.fetch(ctx, "/"+ecosystem+"/modified_id.csv")
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return ReadModifiedSince(rc, since)
+}
+
+// FetchRecord downloads a single record JSON by its index path (as returned
+// by FetchModifiedSince, e.g. "PyPI/PYSEC-2021-123"). When the path has no
+// ecosystem prefix (as returned by FetchEcosystemModifiedSince), pass the
+// ecosystem via FetchEcosystemRecord instead.
 func (c *Client) FetchRecord(ctx context.Context, path string) (Record, error) {
 	rc, err := c.fetch(ctx, "/"+path+".json")
 	if err != nil {
@@ -78,6 +109,13 @@ func (c *Client) FetchRecord(ctx context.Context, path string) (Record, error) {
 		return Record{}, fmt.Errorf("osv: read record %s: %w", path, err)
 	}
 	return ParseRecord(data)
+}
+
+// FetchEcosystemRecord downloads a single record JSON for a known ecosystem.
+// id is the bare record id without ecosystem prefix (e.g. "PYSEC-2021-123");
+// the client prepends the ecosystem directory.
+func (c *Client) FetchEcosystemRecord(ctx context.Context, ecosystem, id string) (Record, error) {
+	return c.FetchRecord(ctx, ecosystem+"/"+id)
 }
 
 func (c *Client) fetch(ctx context.Context, path string) (io.ReadCloser, error) {
