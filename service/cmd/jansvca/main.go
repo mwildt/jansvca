@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mwildt/jansvca/service/internal/auth"
@@ -108,7 +109,10 @@ func envOr(key, def string) string {
 }
 
 // newOSVSync builds the osv.dev sync unless disabled via JANSVCA_OSV_SYNC=off.
-// The fetch base URL and refresh interval are configurable for development.
+// The fetch base URL, refresh interval and imported ecosystems are configurable
+// for development. JANSVCA_OSV_ECOSYSTEMS is a comma-separated list of OSV
+// ecosystems to import (default "Go"); only records from these ecosystems are
+// fetched and stored.
 func newOSVSync(store *vulnapp.CommandHandler, dataDir string) *syncpkg.Sync {
 	if os.Getenv("JANSVCA_OSV_SYNC") == "off" {
 		return nil
@@ -123,8 +127,12 @@ func newOSVSync(store *vulnapp.CommandHandler, dataDir string) *syncpkg.Sync {
 			interval = d
 		}
 	}
+	ecosystems := []string{syncpkg.DefaultEcosystem}
+	if v := os.Getenv("JANSVCA_OSV_ECOSYSTEMS"); v != "" {
+		ecosystems = strings.Split(v, ",")
+	}
 	state := syncpkg.NewStateStore(filepath.Join(dataDir, "osv-sync.json"))
-	return syncpkg.New(client, store, state, interval)
+	return syncpkg.New(client, store, state, interval, ecosystems...)
 }
 
 func matchProjekte(env eventstore.Envelope) bool {

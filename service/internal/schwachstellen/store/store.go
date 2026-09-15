@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -24,6 +25,12 @@ import (
 	"github.com/blevesearch/bleve/v2/mapping"
 	"github.com/blevesearch/bleve/v2/search/query"
 )
+
+// filesPerRange is the maximum number of record files stored in a single
+// range folder. Each range folder buckets 100 records so a single directory
+// never holds more than filesPerRange entries, keeping directory listings fast
+// at OSV scale (~200k records).
+const filesPerRange = 100
 
 // Record is the persisted representation of a vulnerability. It is the
 // canonical state written to <dataDir>/vulnerabilities/<id>.json.
@@ -52,11 +59,13 @@ type AffectedRange struct {
 // New creates and opens a store rooted at dataDir. The directory layout is:
 //
 //	dataDir/
-//	  vulnerabilities/<id>.json   one file per record (canonical state)
-//	  vuln-index/                 Bleve index (rebuildable from the files)
+//	  vulnerabilities/<ecosystem>/<year>/<range>/<id>.json   one file per record
+//	  vuln-index/                  Bleve index (rebuildable from the files)
 //
-// On first open the Bleve index is rebuilt from existing files if it is empty
-// or missing. A separate component index is rebuilt in memory from the files.
+// Records are bucketed by ecosystem and year with at most filesPerRange files
+// per range folder, keeping every directory small even for the full OSV
+// corpus. The Bleve index is rebuilt from existing files when it is empty or
+// missing. A separate component index is rebuilt in memory from the files.
 func New(dataDir string) (*Store, error) {
 	vulnDir := filepath.Join(dataDir, "vulnerabilities")
 	indexDir := filepath.Join(dataDir, "vuln-index")
@@ -68,6 +77,7 @@ func New(dataDir string) (*Store, error) {
 		vulnDir:  vulnDir,
 		indexDir: indexDir,
 		compIdx:  map[string]map[string]struct{}{},
+		paths:    map[string]string{},
 	}
 	if err := s.openIndex(); err != nil {
 		return nil, err
@@ -88,6 +98,10 @@ type Store struct {
 	index    bleve.Index
 	// compIdx maps component -> set of vulnerability IDs that reference it.
 	compIdx map[string]map[string]struct{}
+	// paths maps vulnerability id -> relative path under vulnDir
+	// ("<ecosystem>/<year>/<range>/<id>.json") for O(1) file lookup. It is
+	// rebuilt at open time from the file tree and kept in sync by Put.
+	paths map[string]string
 }
 
 // Close releases the Bleve index.
@@ -138,47 +152,126 @@ func textFieldMapping() *mapping.FieldMapping {
 	return fm
 }
 
-// rebuildIndexFromFiles scans the vulnerabilities directory and ensures every
-// non-deleted record is present in the Bleve index and the component index. It
-// is idempotent and runs once at open time.
+// rebuildIndexFromFiles walks the vulnerabilities directory tree and ensures
+// every non-deleted record is present in the Bleve index and the component
+// index. It also rebuilds the id->relative-path lookup map from the file tree.
+// It is idempotent and runs once at open time. Each record's file location is
+// recorded so Get can read it without scanning the tree.
 func (s *Store) rebuildIndexFromFiles() error {
-	entries, err := os.ReadDir(s.vulnDir)
-	if err != nil {
-		return fmt.Errorf("store: read vuln dir: %w", err)
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		rec, err := s.readRecordFile(e.Name())
+	err := filepath.WalkDir(s.vulnDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			continue
+			return err
 		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".json") {
+			return nil
+		}
+		rec, err := s.readRecordPath(path)
+		if err != nil {
+			return nil
+		}
+		rel, _ := filepath.Rel(s.vulnDir, path)
+		s.paths[rec.ID] = filepath.ToSlash(rel)
 		if rec.Deleted {
-			continue
+			return nil
 		}
 		if err := s.index.Index(rec.ID, toDoc(rec)); err != nil {
 			return fmt.Errorf("store: index %s: %w", rec.ID, err)
 		}
 		s.indexComponent(rec)
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("store: walk vuln dir: %w", err)
 	}
 	return nil
 }
 
-// filePath returns the absolute path of the JSON file for id.
-func (s *Store) filePath(id string) string {
-	return filepath.Join(s.vulnDir, id+".json")
+// relPathFor computes the relative path under vulnDir where rec should be
+// stored: <ecosystem>/<year>/<range>/<id>.json. Ecosystem defaults to "_" and
+// year to "0" when they cannot be derived, so every record still lands in a
+// stable, reproducible location. <range> is the bucket containing 100 records;
+// it is derived from the per-ecosystem/year running count the store maintains.
+func (s *Store) relPathFor(rec Record) string {
+	eco := primaryEcosystem(rec)
+	year := yearOf(rec)
+	n := s.countIn(filepath.ToSlash(filepath.Join(eco, year)))
+	rangeBucket := (n / filesPerRange) * filesPerRange
+	return filepath.ToSlash(filepath.Join(eco, year, strconv.Itoa(rangeBucket), rec.ID+".json"))
 }
 
-// readRecordFile reads and decodes a record by its file name (e.g. "V1.json").
-func (s *Store) readRecordFile(name string) (Record, error) {
-	data, err := os.ReadFile(filepath.Join(s.vulnDir, name))
+// countIn returns the number of records already stored under the given
+// relative subdirectory ("<ecosystem>/<year>"). It scans the in-memory path
+// map so it stays O(total records) but only over the affected buckets.
+func (s *Store) countIn(dir string) int {
+	prefix := dir + "/"
+	n := 0
+	for _, p := range s.paths {
+		if strings.HasPrefix(p, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
+// primaryEcosystem returns the ecosystem used to file rec. It prefers the
+// first entry of rec.Ecosystems, falling back to the first affected range's
+// ecosystem, then "_" when none is known.
+func primaryEcosystem(rec Record) string {
+	if len(rec.Ecosystems) > 0 && rec.Ecosystems[0] != "" {
+		return sanitizeSegment(rec.Ecosystems[0])
+	}
+	for _, a := range rec.Affected {
+		if a.Ecosystem != "" {
+			return sanitizeSegment(a.Ecosystem)
+		}
+	}
+	return "_"
+}
+
+// yearOf extracts the 4-digit year from rec, preferring the OSV id prefix
+// (e.g. "GO-2024-0123" -> "2024") and falling back to "0".
+func yearOf(rec Record) string {
+	for _, part := range strings.Split(rec.ID, "-") {
+		if len(part) == 4 {
+			if _, err := strconv.Atoi(part); err == nil {
+				return part
+			}
+		}
+	}
+	return "0"
+}
+
+// sanitizeSegment replaces characters that are invalid in a path segment.
+func sanitizeSegment(seg string) string {
+	seg = strings.TrimSpace(seg)
+	seg = strings.ReplaceAll(seg, string(filepath.Separator), "_")
+	seg = strings.ReplaceAll(seg, ":", "_")
+	if seg == "" {
+		return "_"
+	}
+	return seg
+}
+
+// absPath returns the absolute filesystem path of the JSON file for id, using
+// the in-memory path map. It returns "" when the id is unknown (the record
+// has not been written yet).
+func (s *Store) absPath(id string) string {
+	rel, ok := s.paths[id]
+	if !ok {
+		return ""
+	}
+	return filepath.Join(s.vulnDir, filepath.FromSlash(rel))
+}
+
+// readRecordPath reads and decodes a record from an absolute file path.
+func (s *Store) readRecordPath(path string) (Record, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return Record{}, err
 	}
 	var rec Record
 	if err := json.Unmarshal(data, &rec); err != nil {
-		return Record{}, fmt.Errorf("store: decode %s: %w", name, err)
+		return Record{}, fmt.Errorf("store: decode %s: %w", path, err)
 	}
 	return rec, nil
 }
@@ -186,7 +279,13 @@ func (s *Store) readRecordFile(name string) (Record, error) {
 // Get loads a single non-deleted record by id. It returns nil, nil when the
 // record does not exist or is deleted.
 func (s *Store) Get(id string) (*Record, error) {
-	data, err := os.ReadFile(s.filePath(id))
+	s.mu.RLock()
+	path := s.absPath(id)
+	s.mu.RUnlock()
+	if path == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
@@ -205,14 +304,20 @@ func (s *Store) Get(id string) (*Record, error) {
 
 // Put writes the record as a JSON file and updates the Bleve index and the
 // component index. It is the single write path used by the command handler.
+// The file location is derived from the record (ecosystem/year/range); when a
+// record's ecosystem changes it is relocated and the old file removed.
 func (s *Store) Put(rec Record) error {
 	if rec.ID == "" {
 		return errors.New("store: record id is required")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	oldPath := s.absPath(rec.ID)
 	if err := s.writeRecord(rec); err != nil {
 		return err
+	}
+	if oldPath != "" && oldPath != s.absPath(rec.ID) {
+		_ = os.Remove(oldPath)
 	}
 	if rec.Deleted {
 		if err := s.index.Delete(rec.ID); err != nil {
@@ -229,13 +334,19 @@ func (s *Store) Put(rec Record) error {
 }
 
 func (s *Store) writeRecord(rec Record) error {
+	rel := s.relPathFor(rec)
+	path := filepath.Join(s.vulnDir, filepath.FromSlash(rel))
 	data, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {
 		return fmt.Errorf("store: marshal %s: %w", rec.ID, err)
 	}
-	if err := os.WriteFile(s.filePath(rec.ID), data, 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("store: create dir %s: %w", rec.ID, err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("store: write %s: %w", rec.ID, err)
 	}
+	s.paths[rec.ID] = rel
 	return nil
 }
 
@@ -335,7 +446,11 @@ func (s *Store) Query(q Query) (QueryResult, error) {
 
 // getLocked loads a record by id assuming the read lock is already held.
 func (s *Store) getLocked(id string) (*Record, error) {
-	data, err := os.ReadFile(s.filePath(id))
+	path := s.absPath(id)
+	if path == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
