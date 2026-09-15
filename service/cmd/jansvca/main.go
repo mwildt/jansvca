@@ -127,7 +127,7 @@ func newOSVSync(store *vulnapp.CommandHandler, dataDir string) *syncpkg.Sync {
 			interval = d
 		}
 	}
-	ecosystems := []string{syncpkg.DefaultEcosystem}
+	ecosystems := syncpkg.DefaultEcosystems
 	if v := os.Getenv("JANSVCA_OSV_ECOSYSTEMS"); v != "" {
 		ecosystems = strings.Split(v, ",")
 	}

@@ -202,25 +202,32 @@ func TestOnce_BulkError(t *testing.T) {
 	}
 }
 
-// TestNew_DefaultEcosystem verifies that a Sync without explicit ecosystems
-// defaults to importing only the Go ecosystem.
-func TestNew_DefaultEcosystem(t *testing.T) {
+// TestNew_DefaultEcosystems verifies that a Sync without explicit ecosystems
+// defaults to importing the Go and Maven (Java) ecosystems.
+func TestNew_DefaultEcosystems(t *testing.T) {
 	_, read, sync, srv := newHarness(t)
 	defer srv.Close()
-	if len(sync.Ecosystems) != 1 || sync.Ecosystems[0] != "Go" {
+	if len(sync.Ecosystems) != 2 || sync.Ecosystems[0] != "Go" || sync.Ecosystems[1] != "Maven" {
 		t.Fatalf("default ecosystems: %+v", sync.Ecosystems)
 	}
 	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/Go/all.zip" {
-			t.Errorf("expected /Go/all.zip, got %s", r.URL.Path)
+		switch r.URL.Path {
+		case "/Go/all.zip":
+			_, _ = w.Write(mustZip(t, map[string]string{"GO-1.json": `{"id":"GO-1","summary":"go","modified":"2024-01-01T00:00:00Z"}`}))
+		case "/Maven/all.zip":
+			_, _ = w.Write(mustZip(t, map[string]string{"GHSA-1.json": `{"id":"GHSA-1","summary":"java","modified":"2024-01-02T00:00:00Z"}`}))
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
 		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(mustZip(t, map[string]string{"GO-1.json": `{"id":"GO-1","summary":"x","modified":"2024-01-01T00:00:00Z"}`}))
 	})
 	if _, err := sync.Once(context.Background()); err != nil {
 		t.Fatalf("once: %v", err)
 	}
 	if read.Get("GO-1") == nil {
-		t.Fatal("GO-1 not imported by default ecosystem sync")
+		t.Error("GO-1 not imported by default ecosystems")
+	}
+	if read.Get("GHSA-1") == nil {
+		t.Error("GHSA-1 (Maven/Java) not imported by default ecosystems")
 	}
 }

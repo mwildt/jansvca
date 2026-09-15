@@ -28,8 +28,11 @@ import (
 	vulnapp "github.com/mwildt/jansvca/service/internal/schwachstellen/application"
 )
 
-// DefaultEcosystems is the OSV ecosystem imported when none is configured.
-const DefaultEcosystem = "Go"
+// DefaultEcosystems are the OSV ecosystems imported when none is configured:
+// Go and Maven (Java). OSV exposes Java advisories under the "Maven"
+// ecosystem directory in the GCS bucket, so that name (not "Java") must be
+// used for per-ecosystem all.zip / modified_id.csv endpoints.
+var DefaultEcosystems = []string{"Go", "Maven"}
 
 // VulnerabilityStore is the write port used to upsert vulnerabilities.
 type VulnerabilityStore interface {
@@ -42,7 +45,7 @@ type Sync struct {
 	Store      VulnerabilityStore
 	State      *StateStore // persists per-ecosystem lastSync across restarts (optional)
 	Interval   time.Duration
-	Ecosystems []string        // ecosystems to import; defaults to [DefaultEcosystem]
+	Ecosystems []string        // ecosystems to import; defaults to DefaultEcosystems
 	OnError    func(err error) // optional; defaults to log.Printf
 	BatchSize  int             // max records per incremental fetch (0 = unlimited)
 
@@ -55,7 +58,7 @@ type Sync struct {
 // StateStore to resume incremental syncs after a restart; pass nil to keep the
 // progress in memory only (first run always downloads per-ecosystem all.zip).
 // ecosystems selects which OSV ecosystems to import; an empty list defaults to
-// [DefaultEcosystem].
+// DefaultEcosystems.
 func New(client *osv.Client, store VulnerabilityStore, state *StateStore, interval time.Duration, ecosystems ...string) *Sync {
 	if interval <= 0 {
 		interval = time.Hour
@@ -64,7 +67,7 @@ func New(client *osv.Client, store VulnerabilityStore, state *StateStore, interv
 		client = osv.NewClient()
 	}
 	if len(ecosystems) == 0 {
-		ecosystems = []string{DefaultEcosystem}
+		ecosystems = DefaultEcosystems
 	}
 	ecosystems = normalizeEcosystems(ecosystems)
 	s := &Sync{
