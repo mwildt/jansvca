@@ -130,7 +130,7 @@ jobs:
 
       - name: Derive service image tags
         id: meta-service
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/jansvca-service
           tags: |
@@ -148,7 +148,7 @@ jobs:
 
       - name: Derive app image tags
         id: meta-app
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/jansvca-app
           tags: |
@@ -166,7 +166,7 @@ jobs:
 
       - name: Derive idp image tags
         id: meta-idp
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/jansvca-idp
           tags: |
