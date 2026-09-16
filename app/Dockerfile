@@ -21,7 +21,7 @@ RUN cd app && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" \
     -o /out/jansvca-app ./cmd/jansvca-app
 
 # ---- Runtime stage -------------------------------------------------------
-FROM alpine:3.20
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates && adduser -D -u 10001 app
 COPY --from=builder /out/jansvca-app /usr/local/bin/jansvca-app
 COPY --from=frontend /dist /app/dist
