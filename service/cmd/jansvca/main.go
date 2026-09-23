@@ -90,9 +90,15 @@ func main() {
 		}()
 	}
 
-	if introspectionURL != "" {
+	authOff := os.Getenv("JANSVCA_AUTH") == "off"
+	switch {
+	case authOff:
+		log.Printf("jansvca: auth disabled via JANSVCA_AUTH=off")
+	case introspectionURL != "":
 		verifier := auth.NewIntrospectionVerifier(introspectionURL, clientID, clientSecret)
 		handler = auth.Middleware(verifier, handler)
+	default:
+		log.Fatal("jansvca: JANSVCA_OAUTH2_INTROSPECTION_URL not set; refusing to start unauthenticated (set JANSVCA_AUTH=off for local development)")
 	}
 
 	log.Printf("jansvca listening on %s (data=%s)", addr, dataDir)

@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"path"
 	"strings"
@@ -138,14 +139,24 @@ func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
 	sess.TokenType = tok.TokenType
 	sess.ExpiresAt = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
 	sess.State = ""
-	// Enrich from introspection if available.
+	// Enrich and validate from introspection if available. A token the
+	// provider reports as inactive must never yield an authenticated session,
+	// and introspection errors are surfaced instead of silently ignored.
 	if a.cfg.OAuth.IntrospectionURL != "" {
-		if ir, err := a.provider.Introspect(r.Context(), tok.AccessToken); err == nil {
-			sess.Subject = ir.Sub
-			sess.Name = ir.Username
-			if ir.Exp > 0 {
-				sess.ExpiresAt = time.Unix(ir.Exp, 0)
-			}
+		ir, err := a.provider.Introspect(r.Context(), tok.AccessToken)
+		if err != nil {
+			log.Printf("auth: introspection failed: %v", err)
+			http.Error(w, "token validation failed", http.StatusBadGateway)
+			return
+		}
+		if !ir.Active {
+			http.Error(w, "token not active", http.StatusUnauthorized)
+			return
+		}
+		sess.Subject = ir.Sub
+		sess.Name = ir.Username
+		if ir.Exp > 0 {
+			sess.ExpiresAt = time.Unix(ir.Exp, 0)
 		}
 	}
 	a.mgr.Store.Save(sess)
@@ -223,7 +234,8 @@ func (a *App) registerGateway(mux *http.ServeMux) {
 		return
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if a.gateway.ServeHTTP(w, r) {
+		if a.gateway.Matches(r.URL.Path) {
+			a.requireAuth(a.gateway).ServeHTTP(w, r)
 			return
 		}
 		a.serveSPA(w, r)

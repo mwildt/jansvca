@@ -127,6 +127,7 @@ docker compose up
 ```bash
 # Service
 docker run --rm -d --name jansvca-service -p 18080:8080 -v jansvca-data:/data \
+  -e JANSVCA_AUTH=off \
   ghcr.io/mwildt/jansvca-service:latest
 
 # App (proxt /api an den Service)
@@ -195,7 +196,7 @@ weiter; nach Anmeldung (admin/admin) erfolgt der Callback am BFF.
 
 ```bash
 (cd app/frontend && npm run build)        # erzeugt app/dist
-(cd service && JANSVCA_DATA_DIR=./data JANSVCA_ADDR=:8081 go run ./cmd/jansvca) &
+(cd service && JANSVCA_DATA_DIR=./data JANSVCA_ADDR=:8081 JANSVCA_AUTH=off go run ./cmd/jansvca) &
 (cd app && JANSVCA_BACKEND_URL=http://localhost:8081 JANSVCA_ADDR=:8080 \
    JANSVCA_SPA_DIR=./dist go run ./cmd/jansvca-app)
 ```
@@ -215,6 +216,7 @@ weiter; nach Anmeldung (admin/admin) erfolgt der Callback am BFF.
 |----------|---------|-----------|
 | `JANSVCA_ADDR` | `:8080` | Listen-Adresse des Backends |
 | `JANSVCA_DATA_DIR` | `./data` | Verzeichnis der WAL-Eventstores |
+| `JANSVCA_AUTH` | `on` | Auth aktiviert; `off` deaktiviert sie explizit (nur für lokale Entwicklung) |
 | `JANSVCA_OAUTH2_INTROSPECTION_URL` | – | OAuth2-Introspection-Endpoint |
 | `JANSVCA_OAUTH2_CLIENT_ID` | – | OAuth2-Client-ID |
 | `JANSVCA_OAUTH2_CLIENT_SECRET` | – | OAuth2-Client-Secret |

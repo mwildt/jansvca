@@ -185,7 +185,7 @@ jobs:
       - name: Smoke test (service starts and serves /api/projects)
         run: |
           IMAGE="ghcr.io/${{ github.repository_owner }}/jansvca-service:sha-$(git rev-parse --short HEAD)"
-          docker run --rm -d --name service-smoke -p 18080:8080 "$IMAGE"
+          docker run --rm -d --name service-smoke -p 18080:8080 -e JANSVCA_AUTH=off "$IMAGE"
           sleep 3
           docker logs service-smoke
           curl -fsS http://127.0.0.1:18080/api/projects || docker logs service-smoke
@@ -206,7 +206,7 @@ jobs:
           SERVICE="ghcr.io/${{ github.repository_owner }}/jansvca-service:sha-$(git rev-parse --short HEAD)"
           APP="ghcr.io/${{ github.repository_owner }}/jansvca-app:sha-$(git rev-parse --short HEAD)"
           docker network create jansvca-smoke
-          docker run --rm -d --name service-smoke2 --network jansvca-smoke "$SERVICE"
+          docker run --rm -d --name service-smoke2 --network jansvca-smoke -e JANSVCA_AUTH=off "$SERVICE"
           docker run --rm -d --name app-smoke --network jansvca-smoke -p 18081:8080 \
             -e JANSVCA_BACKEND_URL=http://service-smoke2:8080 "$APP"
           sleep 4
