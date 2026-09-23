@@ -9,13 +9,17 @@
 package server
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/mwildt/jansvca/idp/internal/config"
@@ -35,6 +39,55 @@ const lastUserCookie = "jansvca_lastuser"
 
 // lastUserMaxAge is how long the last-user cookie is kept (1 year).
 const lastUserMaxAge = 3600 * 24 * 365
+
+// csrfCookie carries a random per-browser CSRF token. It is session-scoped
+// (no MaxAge), HttpOnly and SameSite=Lax. The login form embeds the same
+// value in a hidden field; a submit is only accepted when both match
+// (double-submit cookie pattern).
+const csrfCookie = "jansvca_csrf"
+
+// csrfFieldName is the hidden form field carrying the CSRF token.
+const csrfFieldName = "csrf_token"
+
+// errCSRF is returned when the submitted CSRF token does not match the cookie.
+var errCSRF = errors.New("server: csrf token mismatch")
+
+// issueCSRFToken returns the browser's current CSRF token from the csrfCookie
+// cookie, or generates and sets a fresh one. The token is hex-encoded random.
+func issueCSRFToken(w http.ResponseWriter, r *http.Request) string {
+	if c, err := r.Cookie(csrfCookie); err == nil && len(c.Value) >= 32 {
+		return c.Value
+	}
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand failure is unrecoverable; fall back to sha256 of time, which
+		// still yields an unpredictable-enough token for this dev IdP.
+		h := sha256.Sum256([]byte(time.Now().String()))
+		b = h[:]
+	}
+	v := hex.EncodeToString(b)
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookie,
+		Value:    v,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	return v
+}
+
+// checkCSRFToken compares the submitted form value against the csrfCookie
+// cookie. The cookie value must equal the form value (double-submit cookie).
+func checkCSRFToken(r *http.Request) error {
+	c, err := r.Cookie(csrfCookie)
+	if err != nil || c.Value == "" {
+		return errCSRF
+	}
+	if strings.TrimSpace(r.FormValue(csrfFieldName)) != c.Value {
+		return errCSRF
+	}
+	return nil
+}
 
 // Server is the IdP HTTP handler.
 type Server struct {
@@ -60,6 +113,11 @@ func (s *Server) Handler() http.Handler {
 // --- /authorize ----------------------------------------------------------
 
 func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	setSecurityHeaders(w)
 	q := r.URL.Query()
 	clientID := q.Get("client_id")
 	redirectURI := q.Get("redirect_uri")
@@ -102,7 +160,18 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(lastUserCookie); err == nil && c.Value != "" {
 		lastUser = c.Value
 	}
-	s.renderLogin(w, r, clientID, redirectURI, state, scope, "", lastUser)
+	s.renderLogin(w, r, clientID, redirectURI, state, scope, "", lastUser, issueCSRFToken(w, r))
+}
+
+// setSecurityHeaders sets baseline browser security headers on every login
+// form response: CSP blocking all remote content, no framing, no MIME
+// sniffing and a strict referrer policy.
+func setSecurityHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Cache-Control", "no-store")
 }
 
 func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, client config.Client, redirectURI, state, scope, codeChallenge string) {
@@ -110,12 +179,18 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, c
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
+	if err := checkCSRFToken(r); err != nil {
+		// Missing or mismatched CSRF token: re-render the form with a fresh
+		// token instead of leaking whether credentials were valid.
+		s.renderLogin(w, r, client.ID, redirectURI, state, scope, "Sitzung abgelaufen, bitte erneut versuchen.", r.FormValue("username"), issueCSRFToken(w, r))
+		return
+	}
 	subject := r.FormValue("username")
 	password := r.FormValue("password")
 	user, err := s.store.VerifyPassword(subject, password)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		s.renderLogin(w, r, client.ID, redirectURI, state, scope, "Anmeldung fehlgeschlagen.", subject)
+		s.renderLogin(w, r, client.ID, redirectURI, state, scope, "Anmeldung fehlgeschlagen.", subject, issueCSRFToken(w, r))
 		return
 	}
 	code, err := s.tokens.IssueCode(client.ID, user.Subject, user.Name, redirectURI, scope, codeChallenge)
@@ -146,18 +221,20 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, c
 	http.Redirect(w, r, u.String(), http.StatusFound)
 }
 
-func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, clientID, redirectURI, state, scope, errMsg, lastUser string) {
+func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, clientID, redirectURI, state, scope, errMsg, lastUser, csrfToken string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := struct {
 		ErrMsg        string
 		LastUser      string
 		FocusUser     bool
 		FocusPassword bool
+		CSRFToken     string
 	}{
 		ErrMsg:        errMsg,
 		LastUser:      lastUser,
 		FocusUser:     lastUser == "",
 		FocusPassword: lastUser != "",
+		CSRFToken:     csrfToken,
 	}
 	_ = loginTmpl.Execute(w, data)
 }

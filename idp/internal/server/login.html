@@ -50,6 +50,7 @@ button:active{transform:translateY(1px)}
 <label for="password">Passwort</label>
 <input id="password" name="password" type="password"{{if .FocusPassword}} autofocus{{end}} required>
 </div>
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 <button type="submit">Anmelden</button>
 </form>
 <p class="hint">jansvca IdP</p>
