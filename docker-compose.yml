@@ -64,9 +64,12 @@ services:
       JANSVCA_OAUTH2_AUTHORIZATION_URL: http://localhost:8090/authorize
       JANSVCA_OAUTH2_TOKEN_URL: http://idp:8080/token
       JANSVCA_OAUTH2_INTROSPECTION_URL: http://idp:8080/introspect
+      JANSVCA_OAUTH2_REVOCATION_URL: http://idp:8080/revoke
       JANSVCA_OAUTH2_CLIENT_ID: jansvca-app
       JANSVCA_OAUTH2_CLIENT_SECRET: jansvca-app-secret
       JANSVCA_OAUTH2_REDIRECT_URL: http://localhost:8080/api/auth/callback
+      # Local setup runs on plain http; disable the Secure cookie flag.
+      JANSVCA_SECURE_COOKIES: "false"
       # Gateway upstreams (comma-separated, optional /strip suffix):
       # JANSVCA_GATEWAY_UPSTREAMS: "/proxy/svc=https://api.example.com/strip"
     ports:

@@ -167,9 +167,15 @@ export class JvApp extends LitElement {
     }
   }
 
-  #logout(e: Event): void {
+  async #logout(e: Event): Promise<void> {
     e.preventDefault();
-    window.location.href = api.logoutURL();
+    // POST via form so logout is not triggerable by third-party GET links
+    // (CSRF); the server redirects back to "/" on success.
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = api.logoutURL();
+    document.body.appendChild(form);
+    form.submit();
   }
 
   #login(e: Event): void {
@@ -179,8 +185,7 @@ export class JvApp extends LitElement {
 
   render() {
     if (!this.authReady) return html`<div class="loading"><jv-spinner></jv-spinner></div>`;
-    const authEnabled = !window.location.search.includes("noauth");
-    if (!this.user.authenticated && authEnabled) {
+    if (!this.user.authenticated) {
       return html`<div class="gate">
         <jv-card class="login">
           <div class="brand"><span class="mark"></span><span>jansvca</span></div>

@@ -7,7 +7,7 @@ import (
 
 func TestIssueAndConsumeCode(t *testing.T) {
 	s := NewStore()
-	code, err := s.IssueCode("app", "alice", "Alice", "http://localhost/cb", "openid")
+	code, err := s.IssueCode("app", "alice", "Alice", "http://localhost/cb", "openid", "")
 	if err != nil {
 		t.Fatalf("IssueCode: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestIssueAndConsumeCode(t *testing.T) {
 
 func TestConsumeCodeExpired(t *testing.T) {
 	s := NewStore()
-	code, _ := s.IssueCode("app", "alice", "Alice", "http://localhost/cb", "")
+	code, _ := s.IssueCode("app", "alice", "Alice", "http://localhost/cb", "", "")
 	// force expiry by overwriting the entry directly.
 	s.mu.Lock()
 	s.codes[code].ExpiresAt = time.Now().Add(-time.Minute)
@@ -41,9 +41,12 @@ func TestConsumeCodeExpired(t *testing.T) {
 
 func TestIssueAndReadToken(t *testing.T) {
 	s := NewStore()
-	tok, err := s.IssueToken("alice", "Alice", "openid profile")
+	tok, refresh, err := s.IssueToken("alice", "Alice", "openid profile")
 	if err != nil {
 		t.Fatalf("IssueToken: %v", err)
+	}
+	if refresh == "" {
+		t.Fatal("expected non-empty refresh token")
 	}
 	if tok.Token == "" || tok.Subject != "alice" || tok.Scope != "openid profile" {
 		t.Fatalf("unexpected token %+v", tok)
@@ -59,11 +62,49 @@ func TestIssueAndReadToken(t *testing.T) {
 
 func TestTokenExpired(t *testing.T) {
 	s := NewStore()
-	tok, _ := s.IssueToken("alice", "Alice", "")
+	tok, _, _ := s.IssueToken("alice", "Alice", "")
 	s.mu.Lock()
 	s.tokens[tok.Token].ExpiresAt = time.Now().Add(-time.Minute)
 	s.mu.Unlock()
 	if _, err := s.Token(tok.Token); err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestRefreshTokenRotation(t *testing.T) {
+	s := NewStore()
+	tok, refresh, err := s.IssueToken("alice", "Alice", "openid")
+	if err != nil {
+		t.Fatalf("IssueToken: %v", err)
+	}
+	old, err := s.ConsumeRefreshToken(refresh)
+	if err != nil {
+		t.Fatalf("ConsumeRefreshToken: %v", err)
+	}
+	if old.Subject != "alice" || old.Token != tok.Token {
+		t.Fatalf("unexpected token for refresh: %+v", old)
+	}
+	// refresh token is single-use
+	if _, err := s.ConsumeRefreshToken(refresh); err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound on reuse, got %v", err)
+	}
+}
+
+func TestRevoke(t *testing.T) {
+	s := NewStore()
+	tok, refresh, _ := s.IssueToken("alice", "Alice", "openid")
+	if !s.Revoke(tok.Token) {
+		t.Fatal("expected revoke to remove the token")
+	}
+	if _, err := s.Token(tok.Token); err != ErrNotFound {
+		t.Fatalf("expected token gone, got %v", err)
+	}
+	// the refresh token pointing at it is gone too
+	if _, err := s.ConsumeRefreshToken(refresh); err != ErrNotFound {
+		t.Fatalf("expected refresh token gone, got %v", err)
+	}
+	// revoking an unknown token is a no-op success
+	if s.Revoke("unknown") {
+		t.Fatal("expected false for unknown token")
 	}
 }

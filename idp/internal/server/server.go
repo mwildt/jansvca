@@ -9,7 +9,9 @@
 package server
 
 import (
+	"crypto/sha256"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"html/template"
 	"net/http"
@@ -51,6 +53,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/authorize", s.handleAuthorize)
 	mux.HandleFunc("/token", s.handleToken)
 	mux.HandleFunc("/introspect", s.handleIntrospect)
+	mux.HandleFunc("/revoke", s.handleRevoke)
 	return mux
 }
 
@@ -63,6 +66,8 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	state := q.Get("state")
 	scope := q.Get("scope")
 	responseType := q.Get("response_type")
+	codeChallenge := q.Get("code_challenge")
+	codeChallengeMethod := q.Get("code_challenge_method")
 
 	client, ok := s.store.Client(clientID)
 	if !ok {
@@ -77,9 +82,17 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "redirect_uri not allowed", http.StatusBadRequest)
 		return
 	}
+	if codeChallengeMethod != "" && codeChallengeMethod != "S256" {
+		http.Error(w, "unsupported code_challenge_method", http.StatusBadRequest)
+		return
+	}
+	if codeChallenge != "" && codeChallengeMethod == "" {
+		http.Error(w, "code_challenge requires code_challenge_method", http.StatusBadRequest)
+		return
+	}
 
 	if r.Method == http.MethodPost {
-		s.handleAuthorizeSubmit(w, r, client, redirectURI, state, scope)
+		s.handleAuthorizeSubmit(w, r, client, redirectURI, state, scope, codeChallenge)
 		return
 	}
 
@@ -92,7 +105,7 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	s.renderLogin(w, r, clientID, redirectURI, state, scope, "", lastUser)
 }
 
-func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, client config.Client, redirectURI, state, scope string) {
+func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, client config.Client, redirectURI, state, scope, codeChallenge string) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
@@ -105,7 +118,7 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request, c
 		s.renderLogin(w, r, client.ID, redirectURI, state, scope, "Anmeldung fehlgeschlagen.", subject)
 		return
 	}
-	code, err := s.tokens.IssueCode(client.ID, user.Subject, user.Name, redirectURI, scope)
+	code, err := s.tokens.IssueCode(client.ID, user.Subject, user.Name, redirectURI, scope, codeChallenge)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -173,7 +186,7 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	grantType := r.FormValue("grant_type")
-	if grantType != "authorization_code" {
+	if grantType != "authorization_code" && grantType != "refresh_token" {
 		tokenError(w, http.StatusBadRequest, "unsupported_grant_type")
 		return
 	}
@@ -187,28 +200,70 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		tokenError(w, http.StatusUnauthorized, "invalid_client")
 		return
 	}
+	if grantType == "refresh_token" {
+		s.handleRefreshGrant(w, client, r)
+		return
+	}
 	code := r.FormValue("code")
 	c, err := s.tokens.ConsumeCode(code)
 	if err != nil || c.ClientID != clientID {
 		tokenError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
+	if c.CodeChallenge != "" {
+		verifier := r.FormValue("code_verifier")
+		if verifier == "" || CodeChallengeS256(verifier) != c.CodeChallenge {
+			tokenError(w, http.StatusBadRequest, "invalid_grant")
+			return
+		}
+	}
 	redirectURI := r.FormValue("redirect_uri")
 	if redirectURI != "" && redirectURI != c.RedirectURI {
 		tokenError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
-	t, err := s.tokens.IssueToken(c.Subject, c.Name, c.Scope)
+	t, refresh, err := s.tokens.IssueToken(c.Subject, c.Name, c.Scope)
 	if err != nil {
 		tokenError(w, http.StatusInternalServerError, "server_error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeTokenResponse(w, t, refresh)
+}
+
+// handleRefreshGrant exchanges a refresh token for a new access token
+// (RFC 6749 §6). Refresh tokens are single-use; both tokens are rotated.
+func (s *Server) handleRefreshGrant(w http.ResponseWriter, client config.Client, r *http.Request) {
+	refreshToken := r.FormValue("refresh_token")
+	old, err := s.tokens.ConsumeRefreshToken(refreshToken)
+	if err != nil {
+		tokenError(w, http.StatusBadRequest, "invalid_grant")
+		return
+	}
+	t, refresh, err := s.tokens.IssueToken(old.Subject, old.Name, old.Scope)
+	if err != nil {
+		tokenError(w, http.StatusInternalServerError, "server_error")
+		return
+	}
+	writeTokenResponse(w, t, refresh)
+}
+
+// CodeChallengeS256 derives the RFC 7636 S256 code challenge for a verifier.
+func CodeChallengeS256(verifier string) string {
+	h := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(h[:])
+}
+
+func writeTokenResponse(w http.ResponseWriter, t *token.AccessToken, refresh string) {
+	resp := map[string]any{
 		"access_token": t.Token,
 		"token_type":   "Bearer",
 		"expires_in":   int(time.Until(t.ExpiresAt).Seconds()),
 		"scope":        t.Scope,
-	})
+	}
+	if refresh != "" {
+		resp["refresh_token"] = refresh
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // --- /introspect ---------------------------------------------------------
@@ -244,6 +299,34 @@ func (s *Server) handleIntrospect(w http.ResponseWriter, r *http.Request) {
 		"exp":        t.ExpiresAt.Unix(),
 		"token_type": "Bearer",
 	})
+}
+
+// --- /revoke --------------------------------------------------------------
+
+// handleRevoke implements RFC 7009 token revocation for access tokens (the
+// token_hint carries the access token; its refresh tokens are revoked with
+// it). The response is always 200, per RFC 7009 §2.2.
+func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	clientID, clientSecret, ok := clientAuth(r)
+	if !ok {
+		tokenError(w, http.StatusUnauthorized, "invalid_client")
+		return
+	}
+	client, ok := s.store.Client(clientID)
+	if !ok || (client.Secret != "" && client.Secret != clientSecret) {
+		tokenError(w, http.StatusUnauthorized, "invalid_client")
+		return
+	}
+	s.tokens.Revoke(r.FormValue("token"))
+	writeJSON(w, http.StatusOK, map[string]any{})
 }
 
 // --- helpers -------------------------------------------------------------

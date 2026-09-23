@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"path"
 	"strings"
@@ -35,6 +36,9 @@ type Config struct {
 	Upstreams []gateway.Upstream
 	// SecureCookies controls the Secure flag on session cookies.
 	SecureCookies bool
+	// SessionStore overrides the session backend. When nil, an in-memory
+	// store is used (single instance only).
+	SessionStore session.Store
 }
 
 // App is the assembled BFF HTTP handler.
@@ -47,7 +51,10 @@ type App struct {
 
 // New builds the BFF handler from config.
 func New(cfg Config) (*App, error) {
-	mgr := session.NewManager(session.DefaultCookieConfig(cfg.SecureCookies))
+	mgr := session.NewManagerWithStore(cfg.SessionStore, session.DefaultCookieConfig(cfg.SecureCookies))
+	if cfg.SessionStore == nil {
+		mgr = session.NewManager(session.DefaultCookieConfig(cfg.SecureCookies))
+	}
 	app := &App{
 		mgr:      mgr,
 		provider: oauth.NewProvider(cfg.OAuth),
@@ -97,12 +104,18 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := randomState()
+	verifier, err := oauth.NewCodeVerifier()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	sess := a.mgr.Store.Create()
 	sess.State = state
+	sess.CodeVerifier = verifier
 	a.mgr.Store.Save(sess)
 	a.mgr.SetCookie(w, sess)
 
-	http.Redirect(w, r, a.provider.AuthURL(state), http.StatusFound)
+	http.Redirect(w, r, a.provider.AuthURL(state, oauth.CodeChallengeS256(verifier)), http.StatusFound)
 }
 
 func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
@@ -129,23 +142,35 @@ func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing code", http.StatusBadRequest)
 		return
 	}
-	tok, err := a.provider.Exchange(r.Context(), code)
+	tok, err := a.provider.Exchange(r.Context(), code, sess.CodeVerifier)
 	if err != nil {
 		http.Error(w, "token exchange failed", http.StatusBadGateway)
 		return
 	}
 	sess.Token = tok.AccessToken
 	sess.TokenType = tok.TokenType
+	sess.RefreshToken = tok.RefreshToken
 	sess.ExpiresAt = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
 	sess.State = ""
-	// Enrich from introspection if available.
+	sess.CodeVerifier = ""
+	// Enrich and validate from introspection if available. A token the
+	// provider reports as inactive must never yield an authenticated session,
+	// and introspection errors are surfaced instead of silently ignored.
 	if a.cfg.OAuth.IntrospectionURL != "" {
-		if ir, err := a.provider.Introspect(r.Context(), tok.AccessToken); err == nil {
-			sess.Subject = ir.Sub
-			sess.Name = ir.Username
-			if ir.Exp > 0 {
-				sess.ExpiresAt = time.Unix(ir.Exp, 0)
-			}
+		ir, err := a.provider.Introspect(r.Context(), tok.AccessToken)
+		if err != nil {
+			log.Printf("auth: introspection failed: %v", err)
+			http.Error(w, "token validation failed", http.StatusBadGateway)
+			return
+		}
+		if !ir.Active {
+			http.Error(w, "token not active", http.StatusUnauthorized)
+			return
+		}
+		sess.Subject = ir.Sub
+		sess.Name = ir.Username
+		if ir.Exp > 0 {
+			sess.ExpiresAt = time.Unix(ir.Exp, 0)
 		}
 	}
 	a.mgr.Store.Save(sess)
@@ -153,7 +178,21 @@ func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// POST only, so a third-party page cannot force a logout via a simple
+	// link or img tag (CSRF).
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	sess := a.mgr.FromRequest(r)
 	a.mgr.ClearCookie(w, r)
+	if sess != nil && sess.Token != "" {
+		if err := a.provider.Revoke(r.Context(), sess.Token); err != nil {
+			// The session is already gone locally; log but do not fail the
+			// logout, otherwise users could get stuck logged in.
+			log.Printf("auth: token revocation failed: %v", err)
+		}
+	}
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
@@ -212,8 +251,45 @@ func (a *App) requireAuth(next http.Handler) http.Handler {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}
+		sess = a.ensureFreshToken(w, r, sess)
+		if sess == nil {
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// tokenRefreshSkew refreshes an access token slightly before it actually
+// expires, so a proxied request never carries an already-expired token.
+const tokenRefreshSkew = 30 * time.Second
+
+// ensureFreshToken refreshes the session's access token via the provider's
+// refresh-token grant when it is about to expire. On failure the session is
+// dropped and the caller receives a 401, forcing a fresh login.
+func (a *App) ensureFreshToken(w http.ResponseWriter, r *http.Request, sess *session.Session) *session.Session {
+	if sess.Token == "" || sess.ExpiresAt.IsZero() || time.Until(sess.ExpiresAt) > tokenRefreshSkew {
+		return sess
+	}
+	if sess.RefreshToken == "" {
+		a.mgr.Store.Delete(sess.ID)
+		a.mgr.ClearCookie(w, r)
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return nil
+	}
+	tok, err := a.provider.Refresh(r.Context(), sess.RefreshToken)
+	if err != nil {
+		log.Printf("auth: token refresh failed: %v", err)
+		a.mgr.Store.Delete(sess.ID)
+		a.mgr.ClearCookie(w, r)
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return nil
+	}
+	sess.Token = tok.AccessToken
+	sess.TokenType = tok.TokenType
+	sess.RefreshToken = tok.RefreshToken
+	sess.ExpiresAt = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
+	a.mgr.Store.Save(sess)
+	return sess
 }
 
 // --- Gateway ---------------------------------------------------------------
@@ -223,7 +299,10 @@ func (a *App) registerGateway(mux *http.ServeMux) {
 		return
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if a.gateway.ServeHTTP(w, r) {
+		if a.gateway.Matches(r.URL.Path) {
+			a.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				a.gateway.ServeHTTP(w, r)
+			})).ServeHTTP(w, r)
 			return
 		}
 		a.serveSPA(w, r)

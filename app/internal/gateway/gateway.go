@@ -70,6 +70,18 @@ func New(upstreams []Upstream, mgr *session.Manager) (*Gateway, error) {
 	return g, nil
 }
 
+// Matches reports whether any route is configured for the given path prefix.
+func (g *Gateway) Matches(path string) bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	for _, rt := range g.routes {
+		if strings.HasPrefix(path, rt.prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // ServeHTTP dispatches to the first matching route. It returns false (without
 // writing to w) if no route matches, so callers can fall through to other
 // handlers.

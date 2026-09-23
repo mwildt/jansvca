@@ -23,11 +23,17 @@ type Session struct {
 	Name      string
 	Token     string
 	TokenType string
-	ExpiresAt time.Time
-	CreatedAt time.Time
+	// RefreshToken is the OAuth2 refresh token used to renew an expired
+	// access token without user interaction.
+	RefreshToken string
+	ExpiresAt    time.Time
+	CreatedAt    time.Time
 	// State holds an ephemeral OAuth2 state value during the authorization
 	// code flow; empty once the session is authenticated.
 	State string
+	// CodeVerifier holds the ephemeral PKCE code verifier during the
+	// authorization code flow; empty once the session is authenticated.
+	CodeVerifier string
 }
 
 // IsAuthenticated reports whether the session holds a valid, non-expired token.
@@ -35,19 +41,29 @@ func (s Session) IsAuthenticated() bool {
 	return s.Token != "" && (s.ExpiresAt.IsZero() || time.Now().Before(s.ExpiresAt))
 }
 
-// Store keeps sessions keyed by their random id.
-type Store struct {
+// Store persists sessions keyed by their random id. The interface allows
+// alternative backends (e.g. Redis) for multi-instance deployments; the
+// default in-memory implementation is only suitable for a single instance.
+type Store interface {
+	Create() *Session
+	Get(id string) *Session
+	Save(sess *Session)
+	Delete(id string)
+}
+
+// MemoryStore keeps sessions in process memory. It is safe for concurrent use.
+type MemoryStore struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
 }
 
-// NewStore creates an empty session store.
-func NewStore() *Store {
-	return &Store{sessions: map[string]*Session{}}
+// NewStore creates an empty in-memory session store.
+func NewStore() *MemoryStore {
+	return &MemoryStore{sessions: map[string]*Session{}}
 }
 
 // Create starts a new session and returns it.
-func (s *Store) Create() *Session {
+func (s *MemoryStore) Create() *Session {
 	id := randomID()
 	now := time.Now()
 	sess := &Session{
@@ -60,9 +76,13 @@ func (s *Store) Create() *Session {
 	return sess
 }
 
+// maxSessionAge bounds how long any session may live server-side, even when
+// it never obtains a token expiry (e.g. abandoned pending logins).
+const maxSessionAge = 24 * time.Hour
+
 // Get returns the session for the given id, or nil if it does not exist or has
 // expired.
-func (s *Store) Get(id string) *Session {
+func (s *MemoryStore) Get(id string) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sess, ok := s.sessions[id]
@@ -73,19 +93,23 @@ func (s *Store) Get(id string) *Session {
 		delete(s.sessions, id)
 		return nil
 	}
+	if !sess.CreatedAt.IsZero() && time.Since(sess.CreatedAt) > maxSessionAge {
+		delete(s.sessions, id)
+		return nil
+	}
 	cp := *sess
 	return &cp
 }
 
 // Save persists updates to a session (e.g. after storing a token).
-func (s *Store) Save(sess *Session) {
+func (s *MemoryStore) Save(sess *Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[sess.ID] = sess
 }
 
 // Delete removes a session, effectively logging the user out.
-func (s *Store) Delete(id string) {
+func (s *MemoryStore) Delete(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.sessions, id)
@@ -100,7 +124,7 @@ var ErrNoSession = errors.New("session: no session")
 // Manager owns a store plus cookie configuration and provides request-scoped
 // helpers to read, set and clear the session.
 type Manager struct {
-	Store     *Store
+	Store     Store
 	CookieCfg CookieConfig
 }
 
@@ -125,9 +149,15 @@ func DefaultCookieConfig(secure bool) CookieConfig {
 	}
 }
 
-// NewManager creates a manager with a fresh store and the given cookie config.
+// NewManager creates a manager with a fresh in-memory store and the given
+// cookie config.
 func NewManager(cfg CookieConfig) *Manager {
 	return &Manager{Store: NewStore(), CookieCfg: cfg}
+}
+
+// NewManagerWithStore creates a manager backed by the given store.
+func NewManagerWithStore(store Store, cfg CookieConfig) *Manager {
+	return &Manager{Store: store, CookieCfg: cfg}
 }
 
 // FromRequest reads the session bound to the request, if any.
@@ -173,9 +203,8 @@ func (m *Manager) ClearCookie(w http.ResponseWriter, r *http.Request) {
 func randomID() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		// rand.Read should never fail; fall back to a time-based id to keep
-		// the process running instead of panicking.
-		return base64.RawURLEncoding.EncodeToString([]byte(time.Now().Format("20060102150405.000000000")))
+		// A predictable fallback id would allow session guessing; fail hard.
+		panic("session: crypto/rand failed: " + err.Error())
 	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
