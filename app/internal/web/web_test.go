@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mwildt/jansvca/app/internal/gateway"
 	"github.com/mwildt/jansvca/app/internal/oauth"
+	"github.com/mwildt/jansvca/app/internal/session"
 )
 
 // TestSPA serves index.html for unknown routes and static files for known ones.
@@ -188,5 +190,74 @@ func TestGatewayDisabledAuthProxies(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "upstream" {
 		t.Fatalf("expected proxied response, got %q", body)
+	}
+}
+
+// TestLogoutPostOnly verifies that logout is rejected via GET (CSRF guard)
+// and clears the session via POST.
+func TestLogoutPostOnly(t *testing.T) {
+	revoked := ""
+	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/revoke" {
+			http.Error(w, "unexpected path", http.StatusNotFound)
+			return
+		}
+		_ = r.ParseForm()
+		revoked = r.FormValue("token")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer idp.Close()
+
+	app, err := New(Config{
+		OAuth: oauth.Config{
+			AuthorizationURL: "https://idp.example.com/authorize",
+			TokenURL:         "https://idp.example.com/token",
+			RevocationURL:    idp.URL + "/revoke",
+			ClientID:         "jansvca-app",
+			ClientSecret:     "secret",
+			RedirectURL:      "http://localhost:8080/api/auth/callback",
+		},
+	})
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	client := &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	ts := httptest.NewServer(app.Handler())
+	defer ts.Close()
+
+	// GET logout -> 405.
+	resp, err := client.Get(ts.URL + "/api/auth/logout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 for GET logout, got %d", resp.StatusCode)
+	}
+
+	// Seed an authenticated session directly in the store.
+	sess := app.mgr.Store.Create()
+	sess.Token = "tok-123"
+	sess.ExpiresAt = time.Now().Add(time.Hour)
+	app.mgr.Store.Save(sess)
+
+	// POST logout with the session cookie -> 302 and revocation called.
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/auth/logout", nil)
+	req.AddCookie(&http.Cookie{Name: session.CookieName, Value: sess.ID})
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("expected 302 for POST logout, got %d", resp.StatusCode)
+	}
+	if revoked != "tok-123" {
+		t.Fatalf("expected token to be revoked, got %q", revoked)
+	}
+	if s := app.mgr.Store.Get(sess.ID); s != nil {
+		t.Fatal("expected session to be deleted after logout")
 	}
 }

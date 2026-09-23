@@ -231,10 +231,11 @@ weiter; nach Anmeldung (admin/admin) erfolgt der Callback am BFF.
 | `JANSVCA_ADDR` | `:8080` | Listen-Adresse des BFF |
 | `JANSVCA_BACKEND_URL` | – | Basis-URL des Backends (http(s)://…) |
 | `JANSVCA_SPA_DIR` | `/app/dist` | Verzeichnis der gebauten SPA |
-| `JANSVCA_SECURE_COOKIES` | `false` | `Secure`-Flag der Session-Cookies |
+| `JANSVCA_SECURE_COOKIES` | `true` | `Secure`-Flag der Session-Cookies (für lokales http auf `false` setzen) |
 | `JANSVCA_OAUTH2_AUTHORIZATION_URL` | – | OAuth2-Authorize-Endpoint |
 | `JANSVCA_OAUTH2_TOKEN_URL` | – | OAuth2-Token-Endpoint |
 | `JANSVCA_OAUTH2_INTROSPECTION_URL` | – | OAuth2-Introspection-Endpoint |
+| `JANSVCA_OAUTH2_REVOCATION_URL` | – | OAuth2-Revocation-Endpoint (RFC 7009, Logout) |
 | `JANSVCA_OAUTH2_CLIENT_ID` | – | OAuth2-Client-ID |
 | `JANSVCA_OAUTH2_CLIENT_SECRET` | – | OAuth2-Client-Secret |
 | `JANSVCA_OAUTH2_REDIRECT_URL` | `http://localhost:8080/api/auth/callback` | BFF-Callback-URL |

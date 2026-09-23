@@ -29,6 +29,8 @@ type Config struct {
 	TokenURL string
 	// IntrospectionURL is the provider's token introspection endpoint.
 	IntrospectionURL string
+	// RevocationURL is the provider's token revocation endpoint (RFC 7009).
+	RevocationURL string
 	// ClientID and ClientSecret identify this BFF at the provider.
 	ClientID     string
 	ClientSecret string
@@ -222,6 +224,33 @@ func (p *Provider) Refresh(ctx context.Context, refreshToken string) (Token, err
 		tok.RefreshToken = refreshToken
 	}
 	return tok, nil
+}
+
+// Revoke invalidates an access token at the provider's revocation endpoint
+// (RFC 7009). Revoking an already-invalid token is treated as success, per
+// the RFC. Only transport-level failures are returned as errors.
+func (p *Provider) Revoke(ctx context.Context, accessToken string) error {
+	if p.cfg.RevocationURL == "" {
+		return nil
+	}
+	form := url.Values{}
+	form.Set("token", accessToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.cfg.RevocationURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(p.cfg.ClientID, p.cfg.ClientSecret)
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return &TokenError{StatusCode: resp.StatusCode, Body: string(body)}
+	}
+	return nil
 }
 
 // ExpiresAt converts an expires_in seconds value into an absolute time.

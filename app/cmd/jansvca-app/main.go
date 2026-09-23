@@ -22,16 +22,18 @@ import (
 
 func main() {
 	cfg := web.Config{
-		Addr:          envOr("JANSVCA_ADDR", ":8080"),
-		BackendURL:    os.Getenv("JANSVCA_BACKEND_URL"),
-		SPADir:        envOr("JANSVCA_SPA_DIR", "./app/dist"),
-		SecureCookies: envBool("JANSVCA_SECURE_COOKIES", false),
+		Addr:       envOr("JANSVCA_ADDR", ":8080"),
+		BackendURL: os.Getenv("JANSVCA_BACKEND_URL"),
+		SPADir:     envOr("JANSVCA_SPA_DIR", "./app/dist"),
+		// Secure cookies are on by default; local plain-http dev must opt out.
+		SecureCookies: envBool("JANSVCA_SECURE_COOKIES", true),
 	}
 
 	cfg.OAuth = oauth.Config{
 		AuthorizationURL: os.Getenv("JANSVCA_OAUTH2_AUTHORIZATION_URL"),
 		TokenURL:         os.Getenv("JANSVCA_OAUTH2_TOKEN_URL"),
 		IntrospectionURL: os.Getenv("JANSVCA_OAUTH2_INTROSPECTION_URL"),
+		RevocationURL:    os.Getenv("JANSVCA_OAUTH2_REVOCATION_URL"),
 		ClientID:         os.Getenv("JANSVCA_OAUTH2_CLIENT_ID"),
 		ClientSecret:     os.Getenv("JANSVCA_OAUTH2_CLIENT_SECRET"),
 		RedirectURL:      envOr("JANSVCA_OAUTH2_REDIRECT_URL", "http://localhost:8080/api/auth/callback"),

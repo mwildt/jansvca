@@ -125,6 +125,25 @@ func (s *Store) Token(id string) (*AccessToken, error) {
 	return &cp, nil
 }
 
+// Revoke removes the access token and any refresh token pointing at it.
+// Unknown tokens are ignored (RFC 7009: revocation of an invalid token is a
+// success case for the client). It reports whether a token was actually
+// removed.
+func (s *Store) Revoke(accessToken string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.tokens[accessToken]; !ok {
+		return false
+	}
+	delete(s.tokens, accessToken)
+	for refresh, access := range s.refresh {
+		if access == accessToken {
+			delete(s.refresh, refresh)
+		}
+	}
+	return true
+}
+
 // ConsumeRefreshToken validates a refresh token, removes it (single-use) and
 // returns the principal it was issued for. The associated access token stays
 // valid until its own expiry.

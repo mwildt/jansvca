@@ -418,6 +418,80 @@ func TestRefreshGrant(t *testing.T) {
 	}
 }
 
+func TestRevokeEndpoint(t *testing.T) {
+	srv := New(newTestStore(t))
+	h := srv.Handler()
+
+	// obtain an access token via code flow.
+	form := url.Values{}
+	form.Set("username", "admin")
+	form.Set("password", "admin")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost,
+		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	code := getQuery(t, rec.Header().Get("Location"), "code")
+
+	form = url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", code)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	parts := strings.Split(rec.Body.String(), `"access_token":"`)
+	if len(parts) < 2 {
+		t.Fatal("cannot extract access_token")
+	}
+	accessToken := strings.Split(parts[1], `"`)[0]
+
+	// introspect must report the token active.
+	form = url.Values{}
+	form.Set("token", accessToken)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), `"active":true`) {
+		t.Fatalf("expected active token: %s", rec.Body.String())
+	}
+
+	// revoke requires client auth.
+	form = url.Values{}
+	form.Set("token", accessToken)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/revoke", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without client auth, got %d", rec.Code)
+	}
+
+	// revoke with auth succeeds.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/revoke", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for revoke, got %d", rec.Code)
+	}
+
+	// introspect must now report inactive.
+	form = url.Values{}
+	form.Set("token", accessToken)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), `"active":false`) {
+		t.Fatalf("expected inactive token after revoke: %s", rec.Body.String())
+	}
+}
+
 func getQuery(t *testing.T, raw, key string) string {
 	t.Helper()
 	u, err := url.Parse(raw)

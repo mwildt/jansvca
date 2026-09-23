@@ -89,3 +89,22 @@ func TestRefreshTokenRotation(t *testing.T) {
 		t.Fatalf("expected ErrNotFound on reuse, got %v", err)
 	}
 }
+
+func TestRevoke(t *testing.T) {
+	s := NewStore()
+	tok, refresh, _ := s.IssueToken("alice", "Alice", "openid")
+	if !s.Revoke(tok.Token) {
+		t.Fatal("expected revoke to remove the token")
+	}
+	if _, err := s.Token(tok.Token); err != ErrNotFound {
+		t.Fatalf("expected token gone, got %v", err)
+	}
+	// the refresh token pointing at it is gone too
+	if _, err := s.ConsumeRefreshToken(refresh); err != ErrNotFound {
+		t.Fatalf("expected refresh token gone, got %v", err)
+	}
+	// revoking an unknown token is a no-op success
+	if s.Revoke("unknown") {
+		t.Fatal("expected false for unknown token")
+	}
+}

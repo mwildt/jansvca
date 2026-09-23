@@ -36,6 +36,9 @@ type Config struct {
 	Upstreams []gateway.Upstream
 	// SecureCookies controls the Secure flag on session cookies.
 	SecureCookies bool
+	// SessionStore overrides the session backend. When nil, an in-memory
+	// store is used (single instance only).
+	SessionStore session.Store
 }
 
 // App is the assembled BFF HTTP handler.
@@ -48,7 +51,10 @@ type App struct {
 
 // New builds the BFF handler from config.
 func New(cfg Config) (*App, error) {
-	mgr := session.NewManager(session.DefaultCookieConfig(cfg.SecureCookies))
+	mgr := session.NewManagerWithStore(cfg.SessionStore, session.DefaultCookieConfig(cfg.SecureCookies))
+	if cfg.SessionStore == nil {
+		mgr = session.NewManager(session.DefaultCookieConfig(cfg.SecureCookies))
+	}
 	app := &App{
 		mgr:      mgr,
 		provider: oauth.NewProvider(cfg.OAuth),
@@ -172,7 +178,21 @@ func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// POST only, so a third-party page cannot force a logout via a simple
+	// link or img tag (CSRF).
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	sess := a.mgr.FromRequest(r)
 	a.mgr.ClearCookie(w, r)
+	if sess != nil && sess.Token != "" {
+		if err := a.provider.Revoke(r.Context(), sess.Token); err != nil {
+			// The session is already gone locally; log but do not fail the
+			// logout, otherwise users could get stuck logged in.
+			log.Printf("auth: token revocation failed: %v", err)
+		}
+	}
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 

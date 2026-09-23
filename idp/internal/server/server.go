@@ -53,6 +53,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/authorize", s.handleAuthorize)
 	mux.HandleFunc("/token", s.handleToken)
 	mux.HandleFunc("/introspect", s.handleIntrospect)
+	mux.HandleFunc("/revoke", s.handleRevoke)
 	return mux
 }
 
@@ -298,6 +299,34 @@ func (s *Server) handleIntrospect(w http.ResponseWriter, r *http.Request) {
 		"exp":        t.ExpiresAt.Unix(),
 		"token_type": "Bearer",
 	})
+}
+
+// --- /revoke --------------------------------------------------------------
+
+// handleRevoke implements RFC 7009 token revocation for access tokens (the
+// token_hint carries the access token; its refresh tokens are revoked with
+// it). The response is always 200, per RFC 7009 §2.2.
+func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	clientID, clientSecret, ok := clientAuth(r)
+	if !ok {
+		tokenError(w, http.StatusUnauthorized, "invalid_client")
+		return
+	}
+	client, ok := s.store.Client(clientID)
+	if !ok || (client.Secret != "" && client.Secret != clientSecret) {
+		tokenError(w, http.StatusUnauthorized, "invalid_client")
+		return
+	}
+	s.tokens.Revoke(r.FormValue("token"))
+	writeJSON(w, http.StatusOK, map[string]any{})
 }
 
 // --- helpers -------------------------------------------------------------

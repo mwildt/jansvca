@@ -167,9 +167,15 @@ export class JvApp extends LitElement {
     }
   }
 
-  #logout(e: Event): void {
+  async #logout(e: Event): Promise<void> {
     e.preventDefault();
-    window.location.href = api.logoutURL();
+    // POST via form so logout is not triggerable by third-party GET links
+    // (CSRF); the server redirects back to "/" on success.
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = api.logoutURL();
+    document.body.appendChild(form);
+    form.submit();
   }
 
   #login(e: Event): void {
