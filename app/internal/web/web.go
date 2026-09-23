@@ -142,11 +142,11 @@ func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "token exchange failed", http.StatusBadGateway)
 		return
 	}
-	sess.Token = tok.AccessToken
-	sess.TokenType = tok.TokenType
+	sess.Token        = tok.AccessToken
+	sess.TokenType    = tok.TokenType
 	sess.RefreshToken = tok.RefreshToken
-	sess.ExpiresAt = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
-	sess.State = ""
+	sess.ExpiresAt    = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
+	sess.State        = ""
 	sess.CodeVerifier = ""
 	// Enrich and validate from introspection if available. A token the
 	// provider reports as inactive must never yield an authenticated session,
@@ -265,10 +265,10 @@ func (a *App) ensureFreshToken(w http.ResponseWriter, r *http.Request, sess *ses
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return nil
 	}
-	sess.Token = tok.AccessToken
-	sess.TokenType = tok.TokenType
+	sess.Token        = tok.AccessToken
+	sess.TokenType    = tok.TokenType
 	sess.RefreshToken = tok.RefreshToken
-	sess.ExpiresAt = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
+	sess.ExpiresAt    = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
 	a.mgr.Store.Save(sess)
 	return sess
 }
