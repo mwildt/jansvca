@@ -267,6 +267,7 @@ func vulnQueryFromRequest(r *http.Request) store.Query {
 		Text:      strings.TrimSpace(r.URL.Query().Get("q")),
 		Source:    strings.TrimSpace(r.URL.Query().Get("source")),
 		Ecosystem: strings.TrimSpace(r.URL.Query().Get("ecosystem")),
+		Component: strings.TrimSpace(r.URL.Query().Get("component")),
 		Page:      1,
 		PageSize:  50,
 	}

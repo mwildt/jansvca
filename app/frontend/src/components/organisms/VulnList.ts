@@ -120,7 +120,7 @@ export class JvVulnList extends LitElement {
   @state() private form = { id: "", identifier: "", title: "", cvss: "0" };
   @state() private submitting = false;
   @state() private deleteId: string | null = null;
-  @state() private filter = { q: "", ecosystem: "", source: "", min_cvss: "" };
+  @state() private filter = { q: "", ecosystem: "", source: "", component: "", min_cvss: "" };
   @state() private page = 1;
   @state() private pageSize = 25;
 
@@ -134,6 +134,7 @@ export class JvVulnList extends LitElement {
       q: this.filter.q.trim() || undefined,
       ecosystem: this.filter.ecosystem.trim() || undefined,
       source: this.filter.source.trim() || undefined,
+      component: this.filter.component.trim() || undefined,
       min_cvss: this.filter.min_cvss ? Number(this.filter.min_cvss) : undefined,
       page: this.page,
       page_size: this.pageSize,
@@ -225,6 +226,15 @@ export class JvVulnList extends LitElement {
           placeholder="npm, PyPI …"
           .value=${this.filter.ecosystem}
           @change=${(e: CustomEvent<{ value: string }>) => (this.filter.ecosystem = e.detail.value)}
+        ></jv-input>
+        <jv-input
+          label="Komponente"
+          placeholder="pkg:npm/lit, rails …"
+          .value=${this.filter.component}
+          @change=${(e: CustomEvent<{ value: string }>) => (this.filter.component = e.detail.value)}
+          @keyup=${(e: KeyboardEvent) => {
+            if (e.key === "Enter") this.#applyFilter();
+          }}
         ></jv-input>
         <jv-input
           label="Quelle"

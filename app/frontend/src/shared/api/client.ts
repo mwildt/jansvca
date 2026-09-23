@@ -145,6 +145,7 @@ export const api = {
     if (query?.q) params.set("q", query.q);
     if (query?.source) params.set("source", query.source);
     if (query?.ecosystem) params.set("ecosystem", query.ecosystem);
+    if (query?.component) params.set("component", query.component);
     if (query?.min_cvss !== undefined) params.set("min_cvss", String(query.min_cvss));
     if (query?.page) params.set("page", String(query.page));
     if (query?.page_size) params.set("page_size", String(query.page_size));

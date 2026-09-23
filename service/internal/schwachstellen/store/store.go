@@ -127,6 +127,7 @@ func (s *Store) openIndex() error {
 	dm.AddFieldMappingsAt("id", bleve.NewTextFieldMapping())
 	dm.AddFieldMappingsAt("source", bleve.NewKeywordFieldMapping())
 	dm.AddFieldMappingsAt("ecosystems", bleve.NewKeywordFieldMapping())
+	dm.AddFieldMappingsAt("components", bleve.NewKeywordFieldMapping())
 	dm.AddFieldMappingsAt("cvss", bleve.NewNumericFieldMapping())
 	dm.AddFieldMappingsAt("deleted", bleve.NewBooleanFieldMapping())
 	m.AddDocumentMapping("_default", dm)
@@ -472,6 +473,7 @@ type Query struct {
 	Text       string
 	Source     string
 	Ecosystem  string
+	Component  string
 	MinCVSS    float64
 	HasMinCVSS bool
 	Page       int
@@ -510,6 +512,11 @@ func (s *Store) buildQuery(q Query) query.Query {
 		sq.SetField("ecosystems")
 		qs = append(qs, sq)
 	}
+	if q.Component != "" {
+		sq := bleve.NewTermQuery(q.Component)
+		sq.SetField("components")
+		qs = append(qs, sq)
+	}
 	if q.HasMinCVSS {
 		minIncl := true
 		maxIncl := false
@@ -530,6 +537,7 @@ type doc struct {
 	Title      string   `json:"title"`
 	Source     string   `json:"source"`
 	Ecosystems []string `json:"ecosystems"`
+	Components []string `json:"components"`
 	CVSS       float64  `json:"cvss"`
 	Deleted    bool     `json:"deleted"`
 }
@@ -541,7 +549,29 @@ func toDoc(rec Record) doc {
 		Title:      rec.Title,
 		Source:     rec.Source,
 		Ecosystems: rec.Ecosystems,
+		Components: componentsOf(rec),
 		CVSS:       rec.CVSS,
 		Deleted:    rec.Deleted,
 	}
+}
+
+// componentsOf returns the deduplicated, sorted list of components referenced
+// by rec's affected ranges.
+func componentsOf(rec Record) []string {
+	seen := make(map[string]struct{}, len(rec.Affected))
+	for _, a := range rec.Affected {
+		if a.Component == "" {
+			continue
+		}
+		seen[a.Component] = struct{}{}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for c := range seen {
+		out = append(out, c)
+	}
+	sort.Strings(out)
+	return out
 }

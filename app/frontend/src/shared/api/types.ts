@@ -40,6 +40,7 @@ export interface VulnerabilityQuery {
   q?: string;
   source?: string;
   ecosystem?: string;
+  component?: string;
   min_cvss?: number;
   page?: number;
   page_size?: number;
