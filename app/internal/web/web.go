@@ -20,7 +20,6 @@ import (
 	"github.com/mwildt/jansvca/app/internal/session"
 )
 
-
 // Config configures the BFF web layer.
 type Config struct {
 	// Addr is the listen address, e.g. ":8080".
@@ -105,7 +104,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess := a.mgr.Store.Create()
-	sess.State        = state
+	sess.State = state
 	sess.CodeVerifier = verifier
 	a.mgr.Store.Save(sess)
 	a.mgr.SetCookie(w, sess)
@@ -142,11 +141,11 @@ func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "token exchange failed", http.StatusBadGateway)
 		return
 	}
-	sess.Token        = tok.AccessToken
-	sess.TokenType    = tok.TokenType
+	sess.Token = tok.AccessToken
+	sess.TokenType = tok.TokenType
 	sess.RefreshToken = tok.RefreshToken
-	sess.ExpiresAt    = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
-	sess.State        = ""
+	sess.ExpiresAt = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
+	sess.State = ""
 	sess.CodeVerifier = ""
 	// Enrich and validate from introspection if available. A token the
 	// provider reports as inactive must never yield an authenticated session,
@@ -163,7 +162,7 @@ func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sess.Subject = ir.Sub
-		sess.Name    = ir.Username
+		sess.Name = ir.Username
 		if ir.Exp > 0 {
 			sess.ExpiresAt = time.Unix(ir.Exp, 0)
 		}
@@ -265,10 +264,10 @@ func (a *App) ensureFreshToken(w http.ResponseWriter, r *http.Request, sess *ses
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return nil
 	}
-	sess.Token        = tok.AccessToken
-	sess.TokenType    = tok.TokenType
+	sess.Token = tok.AccessToken
+	sess.TokenType = tok.TokenType
 	sess.RefreshToken = tok.RefreshToken
-	sess.ExpiresAt    = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
+	sess.ExpiresAt = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
 	a.mgr.Store.Save(sess)
 	return sess
 }
