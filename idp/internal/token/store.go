@@ -12,12 +12,13 @@ import (
 
 // Code is an issued authorization code (RFC 6749 §4.1).
 type Code struct {
-	ClientID    string
-	Subject     string
-	Name        string
-	RedirectURI string
-	Scope       string
-	ExpiresAt   time.Time
+	ClientID      string
+	Subject       string
+	Name          string
+	RedirectURI   string
+	Scope         string
+	CodeChallenge string
+	ExpiresAt     time.Time
 }
 
 // AccessToken is an issued access token with its principal.
@@ -31,14 +32,15 @@ type AccessToken struct {
 
 // Store keeps codes and tokens in memory. It is safe for concurrent use.
 type Store struct {
-	mu     sync.Mutex
-	codes  map[string]*Code
-	tokens map[string]*AccessToken
+	mu      sync.Mutex
+	codes   map[string]*Code
+	tokens  map[string]*AccessToken
+	refresh map[string]string
 }
 
 // NewStore creates an empty store.
 func NewStore() *Store {
-	return &Store{codes: map[string]*Code{}, tokens: map[string]*AccessToken{}}
+	return &Store{codes: map[string]*Code{}, tokens: map[string]*AccessToken{}, refresh: map[string]string{}}
 }
 
 const (
@@ -50,19 +52,22 @@ const (
 var ErrNotFound = errors.New("token: not found")
 
 // IssueCode creates, stores and returns a new single-use authorization code.
-func (s *Store) IssueCode(clientID, subject, name, redirectURI, scope string) (string, error) {
+// codeChallenge is the RFC 7636 PKCE challenge (with method S256) and may be
+// empty when the client does not use PKCE.
+func (s *Store) IssueCode(clientID, subject, name, redirectURI, scope, codeChallenge string) (string, error) {
 	id, err := randomID()
 	if err != nil {
 		return "", err
 	}
 	s.mu.Lock()
 	s.codes[id] = &Code{
-		ClientID:    clientID,
-		Subject:     subject,
-		Name:        name,
-		RedirectURI: redirectURI,
-		Scope:       scope,
-		ExpiresAt:   time.Now().Add(codeTTL),
+		ClientID:      clientID,
+		Subject:       subject,
+		Name:          name,
+		RedirectURI:   redirectURI,
+		Scope:         scope,
+		CodeChallenge: codeChallenge,
+		ExpiresAt:     time.Now().Add(codeTTL),
 	}
 	s.mu.Unlock()
 	return id, nil
@@ -82,11 +87,16 @@ func (s *Store) ConsumeCode(id string) (*Code, error) {
 	return &cp, nil
 }
 
-// IssueToken creates, stores and returns a new access token.
-func (s *Store) IssueToken(subject, name, scope string) (*AccessToken, error) {
+// IssueToken creates, stores and returns a new access token plus refresh
+// token. The refresh token is single-use: consuming it rotates both tokens.
+func (s *Store) IssueToken(subject, name, scope string) (*AccessToken, string, error) {
 	id, err := randomID()
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	refresh, err := randomID()
+	if err != nil {
+		return nil, "", err
 	}
 	t := &AccessToken{
 		Token:     id,
@@ -97,8 +107,9 @@ func (s *Store) IssueToken(subject, name, scope string) (*AccessToken, error) {
 	}
 	s.mu.Lock()
 	s.tokens[id] = t
+	s.refresh[refresh] = t.Token
 	s.mu.Unlock()
-	return t, nil
+	return t, refresh, nil
 }
 
 // Token returns the access token if present and not expired.
@@ -108,6 +119,25 @@ func (s *Store) Token(id string) (*AccessToken, error) {
 	t, ok := s.tokens[id]
 	if !ok || time.Now().After(t.ExpiresAt) {
 		delete(s.tokens, id)
+		return nil, ErrNotFound
+	}
+	cp := *t
+	return &cp, nil
+}
+
+// ConsumeRefreshToken validates a refresh token, removes it (single-use) and
+// returns the principal it was issued for. The associated access token stays
+// valid until its own expiry.
+func (s *Store) ConsumeRefreshToken(refresh string) (*AccessToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	access, ok := s.refresh[refresh]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	delete(s.refresh, refresh)
+	t, ok := s.tokens[access]
+	if !ok {
 		return nil, ErrNotFound
 	}
 	cp := *t

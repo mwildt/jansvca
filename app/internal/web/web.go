@@ -20,6 +20,7 @@ import (
 	"github.com/mwildt/jansvca/app/internal/session"
 )
 
+
 // Config configures the BFF web layer.
 type Config struct {
 	// Addr is the listen address, e.g. ":8080".
@@ -98,12 +99,18 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := randomState()
+	verifier, err := oauth.NewCodeVerifier()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	sess := a.mgr.Store.Create()
 	sess.State = state
+	sess.CodeVerifier = verifier
 	a.mgr.Store.Save(sess)
 	a.mgr.SetCookie(w, sess)
 
-	http.Redirect(w, r, a.provider.AuthURL(state), http.StatusFound)
+	http.Redirect(w, r, a.provider.AuthURL(state, oauth.CodeChallengeS256(verifier)), http.StatusFound)
 }
 
 func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
@@ -130,15 +137,17 @@ func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing code", http.StatusBadRequest)
 		return
 	}
-	tok, err := a.provider.Exchange(r.Context(), code)
+	tok, err := a.provider.Exchange(r.Context(), code, sess.CodeVerifier)
 	if err != nil {
 		http.Error(w, "token exchange failed", http.StatusBadGateway)
 		return
 	}
 	sess.Token = tok.AccessToken
 	sess.TokenType = tok.TokenType
+	sess.RefreshToken = tok.RefreshToken
 	sess.ExpiresAt = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
 	sess.State = ""
+	sess.CodeVerifier = ""
 	// Enrich and validate from introspection if available. A token the
 	// provider reports as inactive must never yield an authenticated session,
 	// and introspection errors are surfaced instead of silently ignored.
@@ -223,8 +232,45 @@ func (a *App) requireAuth(next http.Handler) http.Handler {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}
+		sess = a.ensureFreshToken(w, r, sess)
+		if sess == nil {
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// tokenRefreshSkew refreshes an access token slightly before it actually
+// expires, so a proxied request never carries an already-expired token.
+const tokenRefreshSkew = 30 * time.Second
+
+// ensureFreshToken refreshes the session's access token via the provider's
+// refresh-token grant when it is about to expire. On failure the session is
+// dropped and the caller receives a 401, forcing a fresh login.
+func (a *App) ensureFreshToken(w http.ResponseWriter, r *http.Request, sess *session.Session) *session.Session {
+	if sess.Token == "" || sess.ExpiresAt.IsZero() || time.Until(sess.ExpiresAt) > tokenRefreshSkew {
+		return sess
+	}
+	if sess.RefreshToken == "" {
+		a.mgr.Store.Delete(sess.ID)
+		a.mgr.ClearCookie(w, r)
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return nil
+	}
+	tok, err := a.provider.Refresh(r.Context(), sess.RefreshToken)
+	if err != nil {
+		log.Printf("auth: token refresh failed: %v", err)
+		a.mgr.Store.Delete(sess.ID)
+		a.mgr.ClearCookie(w, r)
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return nil
+	}
+	sess.Token = tok.AccessToken
+	sess.TokenType = tok.TokenType
+	sess.RefreshToken = tok.RefreshToken
+	sess.ExpiresAt = oauth.ExpiresAt(time.Now(), tok.ExpiresIn)
+	a.mgr.Store.Save(sess)
+	return sess
 }
 
 // --- Gateway ---------------------------------------------------------------

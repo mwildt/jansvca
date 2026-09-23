@@ -9,6 +9,9 @@ package oauth
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -50,8 +53,9 @@ func NewProvider(cfg Config) *Provider {
 }
 
 // AuthURL builds the authorization-endpoint URL the browser should be sent to.
-// state must be a random value the caller validates on callback.
-func (p *Provider) AuthURL(state string) string {
+// state must be a random value the caller validates on callback. codeChallenge
+// is the RFC 7636 PKCE challenge derived from the caller's verifier.
+func (p *Provider) AuthURL(state, codeChallenge string) string {
 	q := url.Values{}
 	q.Set("response_type", "code")
 	q.Set("client_id", p.cfg.ClientID)
@@ -60,7 +64,26 @@ func (p *Provider) AuthURL(state string) string {
 		q.Set("scope", p.cfg.Scope)
 	}
 	q.Set("state", state)
+	if codeChallenge != "" {
+		q.Set("code_challenge", codeChallenge)
+		q.Set("code_challenge_method", "S256")
+	}
 	return p.cfg.AuthorizationURL + "?" + q.Encode()
+}
+
+// NewCodeVerifier creates a random RFC 7636 PKCE code verifier.
+func NewCodeVerifier() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// CodeChallengeS256 derives the S256 code challenge for a verifier.
+func CodeChallengeS256(verifier string) string {
+	h := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(h[:])
 }
 
 // Token is the result of the token exchange.
@@ -72,13 +95,16 @@ type Token struct {
 }
 
 // Exchange performs the authorization-code -> access-token exchange.
-func (p *Provider) Exchange(ctx context.Context, code string) (Token, error) {
+// codeVerifier is the RFC 7636 PKCE verifier matching the challenge sent in
+// the authorization request.
+func (p *Provider) Exchange(ctx context.Context, code, codeVerifier string) (Token, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
 	form.Set("redirect_uri", p.cfg.RedirectURL)
-	form.Set("client_id", p.cfg.ClientID)
-	form.Set("client_secret", p.cfg.ClientSecret)
+	if codeVerifier != "" {
+		form.Set("code_verifier", codeVerifier)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.cfg.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -156,6 +182,46 @@ func (p *Provider) Introspect(ctx context.Context, token string) (IntrospectionR
 		return IntrospectionResult{}, err
 	}
 	return ir, nil
+}
+
+// Refresh exchanges a refresh token for a new access token (RFC 6749 §6).
+func (p *Provider) Refresh(ctx context.Context, refreshToken string) (Token, error) {
+	form := url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", refreshToken)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.cfg.TokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return Token{}, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(p.cfg.ClientID, p.cfg.ClientSecret)
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return Token{}, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return Token{}, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return Token{}, &TokenError{StatusCode: resp.StatusCode, Body: string(body)}
+	}
+	var tok Token
+	if err := json.Unmarshal(body, &tok); err != nil {
+		return Token{}, err
+	}
+	if tok.AccessToken == "" {
+		return Token{}, errors.New("oauth: refresh response missing access_token")
+	}
+	if tok.TokenType == "" {
+		tok.TokenType = "Bearer"
+	}
+	if tok.RefreshToken == "" {
+		tok.RefreshToken = refreshToken
+	}
+	return tok, nil
 }
 
 // ExpiresAt converts an expires_in seconds value into an absolute time.

@@ -179,8 +179,7 @@ export class JvApp extends LitElement {
 
   render() {
     if (!this.authReady) return html`<div class="loading"><jv-spinner></jv-spinner></div>`;
-    const authEnabled = !window.location.search.includes("noauth");
-    if (!this.user.authenticated && authEnabled) {
+    if (!this.user.authenticated) {
       return html`<div class="gate">
         <jv-card class="login">
           <div class="brand"><span class="mark"></span><span>jansvca</span></div>

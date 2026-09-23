@@ -23,11 +23,17 @@ type Session struct {
 	Name      string
 	Token     string
 	TokenType string
-	ExpiresAt time.Time
-	CreatedAt time.Time
+	// RefreshToken is the OAuth2 refresh token used to renew an expired
+	// access token without user interaction.
+	RefreshToken string
+	ExpiresAt    time.Time
+	CreatedAt    time.Time
 	// State holds an ephemeral OAuth2 state value during the authorization
 	// code flow; empty once the session is authenticated.
 	State string
+	// CodeVerifier holds the ephemeral PKCE code verifier during the
+	// authorization code flow; empty once the session is authenticated.
+	CodeVerifier string
 }
 
 // IsAuthenticated reports whether the session holds a valid, non-expired token.
@@ -60,6 +66,10 @@ func (s *Store) Create() *Session {
 	return sess
 }
 
+// maxSessionAge bounds how long any session may live server-side, even when
+// it never obtains a token expiry (e.g. abandoned pending logins).
+const maxSessionAge = 24 * time.Hour
+
 // Get returns the session for the given id, or nil if it does not exist or has
 // expired.
 func (s *Store) Get(id string) *Session {
@@ -70,6 +80,10 @@ func (s *Store) Get(id string) *Session {
 		return nil
 	}
 	if !sess.ExpiresAt.IsZero() && !time.Now().Before(sess.ExpiresAt) {
+		delete(s.sessions, id)
+		return nil
+	}
+	if !sess.CreatedAt.IsZero() && time.Since(sess.CreatedAt) > maxSessionAge {
 		delete(s.sessions, id)
 		return nil
 	}
@@ -173,9 +187,8 @@ func (m *Manager) ClearCookie(w http.ResponseWriter, r *http.Request) {
 func randomID() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		// rand.Read should never fail; fall back to a time-based id to keep
-		// the process running instead of panicking.
-		return base64.RawURLEncoding.EncodeToString([]byte(time.Now().Format("20060102150405.000000000")))
+		// A predictable fallback id would allow session guessing; fail hard.
+		panic("session: crypto/rand failed: " + err.Error())
 	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
