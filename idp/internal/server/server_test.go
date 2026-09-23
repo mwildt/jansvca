@@ -29,6 +29,69 @@ users:
 	return s
 }
 
+const testAuthorizeQuery = "response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback"
+
+// login performs the browser-side login dance: GET the login form to obtain
+// the CSRF cookie and the embedded token, then POST credentials with the
+// token. It returns the response recorder of the POST.
+func login(t *testing.T, h http.Handler, query, username, password string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/authorize?"+query, nil)
+	h.ServeHTTP(rec, req)
+	var cookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == csrfCookie {
+			cookie = c
+			break
+		}
+	}
+	if cookie == nil {
+		t.Fatalf("%s cookie not set", csrfCookie)
+	}
+	token := extractCSRFToken(t, rec.Body.String())
+
+	form := url.Values{}
+	form.Set("username", username)
+	form.Set("password", password)
+	form.Set(csrfFieldName, token)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/authorize?"+query, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// extractCSRFToken pulls the csrf_token hidden-field value out of the rendered
+// login form HTML.
+func extractCSRFToken(t *testing.T, body string) string {
+	t.Helper()
+	const marker = `name="csrf_token" value="`
+	i := strings.Index(body, marker)
+	if i < 0 {
+		t.Fatalf("csrf_token field missing in login form: %s", body)
+	}
+	rest := body[i+len(marker):]
+	end := strings.Index(rest, `"`)
+	if end < 0 {
+		t.Fatalf("malformed csrf_token field")
+	}
+	return rest[:end]
+}
+
+// loginCode runs the full login dance and returns the authorization code from
+// the redirect Location header.
+func loginCode(t *testing.T, h http.Handler, query, username, password string) string {
+	t.Helper()
+	rec := login(t, h, query, username, password)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("login: expected 302, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	return getQuery(t, rec.Header().Get("Location"), "code")
+}
+
 func TestAuthorizeRendersLoginForm(t *testing.T) {
 	srv := New(newTestStore(t))
 	rec := httptest.NewRecorder()
@@ -70,16 +133,8 @@ func TestFullCodeFlow(t *testing.T) {
 	srv := New(newTestStore(t))
 	h := srv.Handler()
 
-	// 1) POST login form -> expect redirect with code.
-	form := url.Values{}
-	form.Set("username", "admin")
-	form.Set("password", "admin")
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost,
-		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback&state=xyz&scope=openid",
-		strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	h.ServeHTTP(rec, req)
+	// 1) Login via the browser dance (GET form + CSRF, then POST) -> redirect with code.
+	rec := login(t, h, testAuthorizeQuery+"&state=xyz&scope=openid", "admin", "admin")
 
 	if rec.Code != http.StatusFound {
 		t.Fatalf("expected 302, got %d body=%s", rec.Code, rec.Body.String())
@@ -101,12 +156,12 @@ func TestFullCodeFlow(t *testing.T) {
 	}
 
 	// 2) Exchange code for token.
-	form = url.Values{}
+	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
 	form.Set("redirect_uri", "http://localhost:8080/api/auth/callback")
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth("app", "s3cret")
 	h.ServeHTTP(rec, req)
@@ -131,6 +186,7 @@ func TestFullCodeFlow(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "s3cret")
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("introspect: %d", rec.Code)
@@ -179,6 +235,7 @@ func TestIntrospectUnknownToken(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "s3cret")
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
@@ -193,25 +250,16 @@ func TestTokenFormClientAuth(t *testing.T) {
 	srv := New(newTestStore(t))
 	h := srv.Handler()
 
-	form := url.Values{}
-	form.Set("username", "admin")
-	form.Set("password", "admin")
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost,
-		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback",
-		strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	h.ServeHTTP(rec, req)
-	code := getQuery(t, rec.Header().Get("Location"), "code")
+	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
 
-	form = url.Values{}
+	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
 	form.Set("redirect_uri", "http://localhost:8080/api/auth/callback")
 	form.Set("client_id", "app")
 	form.Set("client_secret", "s3cret")
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -223,15 +271,10 @@ func TestAuthorizeSetsLastUserCookie(t *testing.T) {
 	srv := New(newTestStore(t))
 	h := srv.Handler()
 
-	form := url.Values{}
-	form.Set("username", "admin")
-	form.Set("password", "admin")
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost,
-		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback&state=xyz",
-		strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	h.ServeHTTP(rec, req)
+	rec := login(t, h, testAuthorizeQuery+"&state=xyz", "admin", "admin")
+	if rec.Code != http.StatusFound {
+		t.Fatalf("login: expected 302, got %d", rec.Code)
+	}
 
 	var cookie *http.Cookie
 	for _, c := range rec.Result().Cookies() {
@@ -290,24 +333,17 @@ func TestPKCECodeFlow(t *testing.T) {
 	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 	challenge := CodeChallengeS256(verifier)
 
+	pkceQuery := testAuthorizeQuery + "&state=xyz&code_challenge=" + url.QueryEscape(challenge) + "&code_challenge_method=S256"
+
 	// 1) login with PKCE challenge.
-	form := url.Values{}
-	form.Set("username", "admin")
-	form.Set("password", "admin")
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost,
-		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback&state=xyz&code_challenge="+url.QueryEscape(challenge)+"&code_challenge_method=S256",
-		strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	h.ServeHTTP(rec, req)
-	code := getQuery(t, rec.Header().Get("Location"), "code")
+	code := loginCode(t, h, pkceQuery, "admin", "admin")
 
 	// 2) exchange without verifier must fail.
-	form = url.Values{}
+	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
 	req.SetBasicAuth("app", "s3cret")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	h.ServeHTTP(rec, req)
@@ -316,16 +352,7 @@ func TestPKCECodeFlow(t *testing.T) {
 	}
 
 	// the failed exchange consumed the code; run a fresh login for the success path.
-	form = url.Values{}
-	form.Set("username", "admin")
-	form.Set("password", "admin")
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost,
-		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback&state=xyz&code_challenge="+url.QueryEscape(challenge)+"&code_challenge_method=S256",
-		strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	h.ServeHTTP(rec, req)
-	code = getQuery(t, rec.Header().Get("Location"), "code")
+	code = loginCode(t, h, pkceQuery, "admin", "admin")
 
 	// 3) exchange with correct verifier succeeds and returns a refresh token.
 	form = url.Values{}
@@ -354,22 +381,13 @@ func TestRefreshGrant(t *testing.T) {
 	h := srv.Handler()
 
 	// obtain a token via code flow.
-	form := url.Values{}
-	form.Set("username", "admin")
-	form.Set("password", "admin")
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost,
-		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback",
-		strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	h.ServeHTTP(rec, req)
-	code := getQuery(t, rec.Header().Get("Location"), "code")
+	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
 
-	form = url.Values{}
+	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
 	req.SetBasicAuth("app", "s3cret")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	h.ServeHTTP(rec, req)
@@ -423,22 +441,13 @@ func TestRevokeEndpoint(t *testing.T) {
 	h := srv.Handler()
 
 	// obtain an access token via code flow.
-	form := url.Values{}
-	form.Set("username", "admin")
-	form.Set("password", "admin")
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost,
-		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback",
-		strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	h.ServeHTTP(rec, req)
-	code := getQuery(t, rec.Header().Get("Location"), "code")
+	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
 
-	form = url.Values{}
+	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
 	req.SetBasicAuth("app", "s3cret")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	h.ServeHTTP(rec, req)
@@ -454,6 +463,7 @@ func TestRevokeEndpoint(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "s3cret")
 	h.ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), `"active":true`) {
 		t.Fatalf("expected active token: %s", rec.Body.String())
@@ -486,9 +496,280 @@ func TestRevokeEndpoint(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "s3cret")
 	h.ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), `"active":false`) {
 		t.Fatalf("expected inactive token after revoke: %s", rec.Body.String())
+	}
+}
+
+func TestAuthorizeWithoutCSRFTokenRejected(t *testing.T) {
+	srv := New(newTestStore(t))
+	h := srv.Handler()
+
+	// Prime the CSRF cookie via GET, then POST credentials without the token.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/authorize?"+testAuthorizeQuery, nil)
+	h.ServeHTTP(rec, req)
+	var cookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == csrfCookie {
+			cookie = c
+			break
+		}
+	}
+	if cookie == nil {
+		t.Fatalf("%s cookie not set", csrfCookie)
+	}
+
+	form := url.Values{}
+	form.Set("username", "admin")
+	form.Set("password", "admin")
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/authorize?"+testAuthorizeQuery, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+	h.ServeHTTP(rec, req)
+
+	// The login must be rejected with the form re-rendered, not redirected.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 re-render, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Sitzung abgelaufen") {
+		t.Fatalf("expected CSRF error message: %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Header().Get("Location"), "code=") {
+		t.Fatal("no code must be issued without a CSRF token")
+	}
+}
+
+func TestAuthorizeWrongCSRFTokenRejected(t *testing.T) {
+	srv := New(newTestStore(t))
+	h := srv.Handler()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/authorize?"+testAuthorizeQuery, nil)
+	h.ServeHTTP(rec, req)
+	var cookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == csrfCookie {
+			cookie = c
+			break
+		}
+	}
+	if cookie == nil {
+		t.Fatalf("%s cookie not set", csrfCookie)
+	}
+
+	form := url.Values{}
+	form.Set("username", "admin")
+	form.Set("password", "admin")
+	form.Set(csrfFieldName, "forged-token-value")
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/authorize?"+testAuthorizeQuery, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 re-render, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Sitzung abgelaufen") {
+		t.Fatalf("expected CSRF error message: %s", rec.Body.String())
+	}
+}
+
+func TestAuthorizeSetsSecurityHeaders(t *testing.T) {
+	srv := New(newTestStore(t))
+	h := srv.Handler()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/authorize?"+testAuthorizeQuery, nil)
+	h.ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "frame-ancestors 'none'") || !strings.Contains(csp, "default-src 'none'") {
+		t.Fatalf("unexpected CSP: %q", csp)
+	}
+	if rec.Header().Get("X-Frame-Options") != "DENY" {
+		t.Fatalf("X-Frame-Options: %q", rec.Header().Get("X-Frame-Options"))
+	}
+	if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("X-Content-Type-Options: %q", rec.Header().Get("X-Content-Type-Options"))
+	}
+	if rec.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("Referrer-Policy: %q", rec.Header().Get("Referrer-Policy"))
+	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control: %q", rec.Header().Get("Cache-Control"))
+	}
+}
+
+func TestCSRFCookieIsHttpOnlySessionScoped(t *testing.T) {
+	srv := New(newTestStore(t))
+	h := srv.Handler()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/authorize?"+testAuthorizeQuery, nil)
+	h.ServeHTTP(rec, req)
+
+	var cookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == csrfCookie {
+			cookie = c
+			break
+		}
+	}
+	if cookie == nil {
+		t.Fatalf("%s cookie not set", csrfCookie)
+	}
+	if !cookie.HttpOnly {
+		t.Fatal("CSRF cookie must be HttpOnly")
+	}
+	if cookie.MaxAge != 0 && cookie.Expires.IsZero() {
+		t.Fatalf("CSRF cookie must be session-scoped, got MaxAge=%d", cookie.MaxAge)
+	}
+	if cookie.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("CSRF cookie SameSite: %v", cookie.SameSite)
+	}
+}
+
+func TestIntrospectRequiresClientAuth(t *testing.T) {
+	srv := New(newTestStore(t))
+	defer srv.Close()
+	h := srv.Handler()
+
+	// Obtain a valid access token via code flow.
+	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", code)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	parts := strings.Split(rec.Body.String(), `"access_token":"`)
+	if len(parts) < 2 {
+		t.Fatal("cannot extract access_token")
+	}
+	accessToken := strings.Split(parts[1], `"`)[0]
+
+	// Without client credentials introspection must fail with 401.
+	form = url.Values{}
+	form.Set("token", accessToken)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without client auth, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "invalid_client") {
+		t.Fatalf("expected invalid_client error: %s", rec.Body.String())
+	}
+
+	// With wrong credentials it must not reveal token state.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "wrong-secret")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for bad client, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"active":false`) {
+		t.Fatalf("expected inactive for bad client: %s", rec.Body.String())
+	}
+}
+
+func TestRefreshGrantClientBinding(t *testing.T) {
+	srv := New(newTestStore(t))
+	defer srv.Close()
+	h := srv.Handler()
+
+	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", code)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	parts := strings.Split(rec.Body.String(), `"refresh_token":"`)
+	if len(parts) < 2 {
+		t.Fatal("cannot extract refresh_token")
+	}
+	refresh := strings.Split(parts[1], `"`)[0]
+
+	// A second client exists in the store with different credentials.
+	form = url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", refresh)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("intruder", "nope")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unknown client, got %d", rec.Code)
+	}
+
+	// The rightful client can still use the refresh token.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("rightful client refresh should succeed, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRevokeClientBinding(t *testing.T) {
+	srv := New(newTestStore(t))
+	defer srv.Close()
+	h := srv.Handler()
+
+	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", code)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	parts := strings.Split(rec.Body.String(), `"access_token":"`)
+	if len(parts) < 2 {
+		t.Fatal("cannot extract access_token")
+	}
+	accessToken := strings.Split(parts[1], `"`)[0]
+
+	// The test store only has client "app"; a revoke with an unknown client
+	// is rejected as invalid_client (401).
+	form = url.Values{}
+	form.Set("token", accessToken)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/revoke", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("intruder", "nope")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unknown client, got %d", rec.Code)
+	}
+
+	// The token must still be active afterwards.
+	form = url.Values{}
+	form.Set("token", accessToken)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), `"active":true`) {
+		t.Fatalf("token must survive foreign revoke attempt: %s", rec.Body.String())
 	}
 }
 

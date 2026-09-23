@@ -24,9 +24,10 @@ services:
     expose:
       - "8080"
     # Browser-facing port for the /authorize redirect. Keep in sync with the
-    # app's JANSVCA_OAUTH2_AUTHORIZATION_URL below.
+    # app's JANSVCA_OAUTH2_AUTHORIZATION_URL below. Bound to loopback so the
+    # IdP is not reachable from the local network.
     ports:
-      - "8090:8080"
+      - "127.0.0.1:8090:8080"
     restart: unless-stopped
 
   service:
