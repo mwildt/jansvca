@@ -235,7 +235,9 @@ func (a *App) registerGateway(mux *http.ServeMux) {
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if a.gateway.Matches(r.URL.Path) {
-			a.requireAuth(a.gateway).ServeHTTP(w, r)
+			a.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				a.gateway.ServeHTTP(w, r)
+			})).ServeHTTP(w, r)
 			return
 		}
 		a.serveSPA(w, r)
