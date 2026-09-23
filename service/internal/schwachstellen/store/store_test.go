@@ -72,6 +72,14 @@ func TestStore_PutGetQuery(t *testing.T) {
 		t.Fatalf("ecosystem filter: %+v", res)
 	}
 
+	res, err = s.Query(store.Query{Component: "pkg:gem/rails", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("query component: %v", err)
+	}
+	if res.Total != 1 || res.Items[0].ID != "V1" {
+		t.Fatalf("component filter: %+v", res)
+	}
+
 	ids := s.ComponentsFor("pkg:gem/rails")
 	if len(ids) != 1 || ids[0] != "V1" {
 		t.Fatalf("components for rails: %+v", ids)
