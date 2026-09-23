@@ -105,7 +105,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess := a.mgr.Store.Create()
-	sess.State = state
+	sess.State        = state
 	sess.CodeVerifier = verifier
 	a.mgr.Store.Save(sess)
 	a.mgr.SetCookie(w, sess)
@@ -163,7 +163,7 @@ func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sess.Subject = ir.Sub
-		sess.Name = ir.Username
+		sess.Name    = ir.Username
 		if ir.Exp > 0 {
 			sess.ExpiresAt = time.Unix(ir.Exp, 0)
 		}
