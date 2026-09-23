@@ -37,6 +37,9 @@ var loginTmpl = template.Must(template.New("login").Parse(string(loginHTML)))
 // no authentication value.
 const lastUserCookie = "jansvca_lastuser"
 
+// janitorInterval is how often the token janitor removes expired entries.
+const janitorInterval = time.Minute
+
 // lastUserMaxAge is how long the last-user cookie is kept (1 year).
 const lastUserMaxAge = 3600 * 24 * 365
 
@@ -93,11 +96,20 @@ func checkCSRFToken(r *http.Request) error {
 type Server struct {
 	store  *config.Store
 	tokens *token.Store
+	stop   chan struct{}
 }
 
-// New creates an IdP server backed by the given user/client store.
+// New creates an IdP server backed by the given user/client store. It starts
+// a background janitor that periodically removes expired codes and tokens.
 func New(store *config.Store) *Server {
-	return &Server{store: store, tokens: token.NewStore()}
+	s := &Server{store: store, tokens: token.NewStore(), stop: make(chan struct{})}
+	s.tokens.StartJanitor(janitorInterval, s.stop)
+	return s
+}
+
+// Close stops the background janitor goroutine.
+func (s *Server) Close() {
+	close(s.stop)
 }
 
 // Handler returns the mux serving all IdP endpoints.
@@ -299,7 +311,7 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		tokenError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
-	t, refresh, err := s.tokens.IssueToken(c.Subject, c.Name, c.Scope)
+	t, refresh, err := s.tokens.IssueToken(c.ClientID, c.Subject, c.Name, c.Scope)
 	if err != nil {
 		tokenError(w, http.StatusInternalServerError, "server_error")
 		return
@@ -311,12 +323,12 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 // (RFC 6749 §6). Refresh tokens are single-use; both tokens are rotated.
 func (s *Server) handleRefreshGrant(w http.ResponseWriter, client config.Client, r *http.Request) {
 	refreshToken := r.FormValue("refresh_token")
-	old, err := s.tokens.ConsumeRefreshToken(refreshToken)
+	old, err := s.tokens.ConsumeRefreshToken(refreshToken, client.ID)
 	if err != nil {
 		tokenError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
-	t, refresh, err := s.tokens.IssueToken(old.Subject, old.Name, old.Scope)
+	t, refresh, err := s.tokens.IssueToken(old.ClientID, old.Subject, old.Name, old.Scope)
 	if err != nil {
 		tokenError(w, http.StatusInternalServerError, "server_error")
 		return
@@ -354,13 +366,17 @@ func (s *Server) handleIntrospect(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"active": false})
 		return
 	}
-	// Client authentication (basic) is optional for the local IdP but accepted.
-	clientID, _, _ := clientAuth(r)
-	if clientID != "" {
-		if _, ok := s.store.Client(clientID); !ok {
-			writeJSON(w, http.StatusOK, map[string]any{"active": false})
-			return
-		}
+	// RFC 7662 requires the caller (resource server) to authenticate. Reject
+	// requests without client credentials.
+	clientID, clientSecret, ok := clientAuth(r)
+	if !ok {
+		tokenError(w, http.StatusUnauthorized, "invalid_client")
+		return
+	}
+	client, ok := s.store.Client(clientID)
+	if !ok || (client.Secret != "" && client.Secret != clientSecret) {
+		writeJSON(w, http.StatusOK, map[string]any{"active": false})
+		return
 	}
 	tok := r.FormValue("token")
 	t, err := s.tokens.Token(tok)
@@ -402,7 +418,7 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
 		tokenError(w, http.StatusUnauthorized, "invalid_client")
 		return
 	}
-	s.tokens.Revoke(r.FormValue("token"))
+	s.tokens.Revoke(r.FormValue("token"), client.ID)
 	writeJSON(w, http.StatusOK, map[string]any{})
 }
 

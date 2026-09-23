@@ -24,6 +24,7 @@ type Code struct {
 // AccessToken is an issued access token with its principal.
 type AccessToken struct {
 	Token     string
+	ClientID  string
 	Subject   string
 	Name      string
 	Scope     string
@@ -89,7 +90,8 @@ func (s *Store) ConsumeCode(id string) (*Code, error) {
 
 // IssueToken creates, stores and returns a new access token plus refresh
 // token. The refresh token is single-use: consuming it rotates both tokens.
-func (s *Store) IssueToken(subject, name, scope string) (*AccessToken, string, error) {
+// Both tokens are bound to the client that exchanged the code (clientID).
+func (s *Store) IssueToken(clientID, subject, name, scope string) (*AccessToken, string, error) {
 	id, err := randomID()
 	if err != nil {
 		return nil, "", err
@@ -100,6 +102,7 @@ func (s *Store) IssueToken(subject, name, scope string) (*AccessToken, string, e
 	}
 	t := &AccessToken{
 		Token:     id,
+		ClientID:  clientID,
 		Subject:   subject,
 		Name:      name,
 		Scope:     scope,
@@ -125,14 +128,16 @@ func (s *Store) Token(id string) (*AccessToken, error) {
 	return &cp, nil
 }
 
-// Revoke removes the access token and any refresh token pointing at it.
-// Unknown tokens are ignored (RFC 7009: revocation of an invalid token is a
-// success case for the client). It reports whether a token was actually
-// removed.
-func (s *Store) Revoke(accessToken string) bool {
+// Revoke removes the access token and any refresh token pointing at it, but
+// only when the token was issued to the given client (RFC 7009 §2.1: the
+// authorization server validates whether the token was issued to the client
+// making the request). Revoking a token of another client is reported as a
+// no-op success. It reports whether a token was actually removed.
+func (s *Store) Revoke(accessToken, clientID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.tokens[accessToken]; !ok {
+	t, ok := s.tokens[accessToken]
+	if !ok || t.ClientID != clientID {
 		return false
 	}
 	delete(s.tokens, accessToken)
@@ -144,23 +149,69 @@ func (s *Store) Revoke(accessToken string) bool {
 	return true
 }
 
-// ConsumeRefreshToken validates a refresh token, removes it (single-use) and
-// returns the principal it was issued for. The associated access token stays
-// valid until its own expiry.
-func (s *Store) ConsumeRefreshToken(refresh string) (*AccessToken, error) {
+// ConsumeRefreshToken validates a refresh token for the given client, removes
+// it (single-use) and returns the principal it was issued for. The refresh
+// token is rejected when it was issued to a different client. The associated
+// access token stays valid until its own expiry.
+func (s *Store) ConsumeRefreshToken(refresh, clientID string) (*AccessToken, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	access, ok := s.refresh[refresh]
 	if !ok {
 		return nil, ErrNotFound
 	}
-	delete(s.refresh, refresh)
 	t, ok := s.tokens[access]
 	if !ok {
+		delete(s.refresh, refresh)
 		return nil, ErrNotFound
 	}
+	if t.ClientID != clientID {
+		return nil, ErrNotFound
+	}
+	delete(s.refresh, refresh)
 	cp := *t
 	return &cp, nil
+}
+
+// cleanup removes expired codes and tokens. It is called by the janitor
+// goroutine started via StartJanitor and can be called directly in tests.
+func (s *Store) cleanup() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	for id, c := range s.codes {
+		if now.After(c.ExpiresAt) {
+			delete(s.codes, id)
+		}
+	}
+	for id, t := range s.tokens {
+		if now.After(t.ExpiresAt) {
+			delete(s.tokens, id)
+			for refresh, access := range s.refresh {
+				if access == id {
+					delete(s.refresh, refresh)
+				}
+			}
+		}
+	}
+}
+
+// StartJanitor starts a background goroutine that periodically removes
+// expired codes and tokens (and refresh tokens pointing at them) so the
+// in-memory store does not grow without bound. It stops when stop is closed.
+func (s *Store) StartJanitor(interval time.Duration, stop <-chan struct{}) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				s.cleanup()
+			case <-stop:
+				return
+			}
+		}
+	}()
 }
 
 func randomID() (string, error) {

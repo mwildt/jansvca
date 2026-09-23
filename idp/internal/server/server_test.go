@@ -186,6 +186,7 @@ func TestFullCodeFlow(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "s3cret")
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("introspect: %d", rec.Code)
@@ -234,6 +235,7 @@ func TestIntrospectUnknownToken(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "s3cret")
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
@@ -461,6 +463,7 @@ func TestRevokeEndpoint(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "s3cret")
 	h.ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), `"active":true`) {
 		t.Fatalf("expected active token: %s", rec.Body.String())
@@ -493,6 +496,7 @@ func TestRevokeEndpoint(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "s3cret")
 	h.ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), `"active":false`) {
 		t.Fatalf("expected inactive token after revoke: %s", rec.Body.String())
@@ -627,6 +631,145 @@ func TestCSRFCookieIsHttpOnlySessionScoped(t *testing.T) {
 	}
 	if cookie.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("CSRF cookie SameSite: %v", cookie.SameSite)
+	}
+}
+
+func TestIntrospectRequiresClientAuth(t *testing.T) {
+	srv := New(newTestStore(t))
+	defer srv.Close()
+	h := srv.Handler()
+
+	// Obtain a valid access token via code flow.
+	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", code)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	parts := strings.Split(rec.Body.String(), `"access_token":"`)
+	if len(parts) < 2 {
+		t.Fatal("cannot extract access_token")
+	}
+	accessToken := strings.Split(parts[1], `"`)[0]
+
+	// Without client credentials introspection must fail with 401.
+	form = url.Values{}
+	form.Set("token", accessToken)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without client auth, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "invalid_client") {
+		t.Fatalf("expected invalid_client error: %s", rec.Body.String())
+	}
+
+	// With wrong credentials it must not reveal token state.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "wrong-secret")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for bad client, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"active":false`) {
+		t.Fatalf("expected inactive for bad client: %s", rec.Body.String())
+	}
+}
+
+func TestRefreshGrantClientBinding(t *testing.T) {
+	srv := New(newTestStore(t))
+	defer srv.Close()
+	h := srv.Handler()
+
+	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", code)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	parts := strings.Split(rec.Body.String(), `"refresh_token":"`)
+	if len(parts) < 2 {
+		t.Fatal("cannot extract refresh_token")
+	}
+	refresh := strings.Split(parts[1], `"`)[0]
+
+	// A second client exists in the store with different credentials.
+	form = url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", refresh)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("intruder", "nope")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unknown client, got %d", rec.Code)
+	}
+
+	// The rightful client can still use the refresh token.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("rightful client refresh should succeed, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRevokeClientBinding(t *testing.T) {
+	srv := New(newTestStore(t))
+	defer srv.Close()
+	h := srv.Handler()
+
+	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", code)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	parts := strings.Split(rec.Body.String(), `"access_token":"`)
+	if len(parts) < 2 {
+		t.Fatal("cannot extract access_token")
+	}
+	accessToken := strings.Split(parts[1], `"`)[0]
+
+	// The test store only has client "app"; a revoke with an unknown client
+	// is rejected as invalid_client (401).
+	form = url.Values{}
+	form.Set("token", accessToken)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/revoke", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("intruder", "nope")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unknown client, got %d", rec.Code)
+	}
+
+	// The token must still be active afterwards.
+	form = url.Values{}
+	form.Set("token", accessToken)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.SetBasicAuth("app", "s3cret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), `"active":true`) {
+		t.Fatalf("token must survive foreign revoke attempt: %s", rec.Body.String())
 	}
 }
 
