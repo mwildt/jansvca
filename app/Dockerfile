@@ -4,7 +4,7 @@
 # the Go BFF, then serves the SPA and proxies /api/* to the service container.
 
 # ---- Frontend build stage ------------------------------------------------
-FROM node:22-alpine AS frontend
+FROM node:24-alpine AS frontend
 WORKDIR /fe
 COPY app/frontend/package.json app/frontend/package-lock.json* ./
 RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
