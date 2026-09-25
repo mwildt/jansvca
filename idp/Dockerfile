@@ -13,7 +13,7 @@ RUN cd idp && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" \
     -o /out/jansvca-idp ./cmd/idp
 
 # ---- Runtime stage -------------------------------------------------------
-FROM alpine:3.20
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates && adduser -D -u 10001 idp
 COPY --from=builder /out/jansvca-idp /usr/local/bin/jansvca-idp
 COPY idp-config.yaml /etc/jansvca/idp-config.yaml
