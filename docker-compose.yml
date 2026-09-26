@@ -20,9 +20,14 @@ services:
     image: ghcr.io/mwildt/jansvca-idp:latest
     environment:
       IDP_ADDR: ":8080"
+      # Dedicated introspection port: serves only /introspect, so resource
+      # servers can be wired to their own (optionally TLS/mTLS-terminated)
+      # listener. Introspection is no longer served on IDP_ADDR.
+      IDP_INTROSPECT_ADDR: ":8081"
       IDP_CONFIG: /etc/jansvca/idp-config.yaml
     expose:
       - "8080"
+      - "8081"
     # Browser-facing port for the /authorize redirect. Keep in sync with the
     # app's JANSVCA_OAUTH2_AUTHORIZATION_URL below. Bound to loopback so the
     # IdP is not reachable from the local network.
@@ -39,7 +44,7 @@ services:
       JANSVCA_ADDR: ":8080"
       JANSVCA_DATA_DIR: /data
       # Backend validates the Bearer token (injected by the app) via the idp.
-      JANSVCA_OAUTH2_INTROSPECTION_URL: http://idp:8080/introspect
+      JANSVCA_OAUTH2_INTROSPECTION_URL: http://idp:8081/introspect
       JANSVCA_OAUTH2_CLIENT_ID: jansvca-app
       JANSVCA_OAUTH2_CLIENT_SECRET: jansvca-app-secret
     volumes:
@@ -64,7 +69,7 @@ services:
       # introspect are server-to-server over the compose network.
       JANSVCA_OAUTH2_AUTHORIZATION_URL: http://localhost:8090/authorize
       JANSVCA_OAUTH2_TOKEN_URL: http://idp:8080/token
-      JANSVCA_OAUTH2_INTROSPECTION_URL: http://idp:8080/introspect
+      JANSVCA_OAUTH2_INTROSPECTION_URL: http://idp:8081/introspect
       JANSVCA_OAUTH2_REVOCATION_URL: http://idp:8080/revoke
       JANSVCA_OAUTH2_CLIENT_ID: jansvca-app
       JANSVCA_OAUTH2_CLIENT_SECRET: jansvca-app-secret

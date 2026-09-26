@@ -9,10 +9,15 @@
 #   IDP_CONFIG=./idp-config.yaml go run ./cmd/idp
 #
 # Login: subject "admin", password "admin".
+#
+# The IdP serves introspection on a dedicated port when IDP_INTROSPECT_ADDR is
+# set (see README); a client can demand mTLS for introspection by setting
+# require_mtls: true, which rejects plain-HTTP introspection calls.
 
 clients:
   - id: jansvca-app
     secret: jansvca-app-secret
+    # require_mtls: true  # introspection only over TLS (dedicated port behind a mTLS listener)
     redirect_uris:
       # Browser-facing callback of the BFF. The IdP must accept exactly this URL.
       - http://localhost:8080/api/auth/callback

@@ -47,7 +47,15 @@ Login: Browser ──► idp /authorize (:8090) ──(code)──► app /api/a
   - Nutzer und Clients aus `idp-config.yaml`; Passwörter als bcrypt-Hash
     (Klartext-Passwörter werden beim Laden gehasht, nur für lokale Entwicklung).
   - Endpunkte: `GET/POST /authorize` (eingebautes Login-Formular),
-    `POST /token` (Code-Austausch), `POST /introspect` (RFC 7662).
+    `POST /token` (Code-Austausch), `POST /revoke` (RFC 7009).
+  - `POST /introspect` (RFC 7662) läuft auf einem **eigenen Port**
+    (`IDP_INTROSPECT_ADDR`), damit Introspection serverseitig getrennt vom
+    browserfähigen Haupt-Port betrieben werden kann (z. B. hinter einem
+    TLS/mTLS-terminierenden Listener). Ohne `IDP_INTROSPECT_ADDR` bleibt
+    Introspection auf dem Haupt-Port.
+  - Pro Client kann in `idp-config.yaml` `require_mtls: true` gesetzt werden:
+    dann wird Introspection für diesen Client nur über TLS-Verbindungen
+    akzeptiert (Plain-HTTP-Calls werden mit `invalid_client` abgewiesen).
   - Codes und Tokens sind zufällige, kurze, einmalige/opake Strings im Speicher.
 - **`/app/frontend`** – Lit-SPA (Vite + TypeScript), Atomic Design.
 
@@ -94,9 +102,9 @@ docker compose up
 
 Die App ist unter `http://localhost:8080` erreichbar und proxt `/api/*` an den
 Service-Container (`http://service:8080`). Der IdP ist unter `http://localhost:8090`
-erreichbar (für den `/authorize`-Redirect im Browser); Token- und
-Introspection-Aufrufe laufen serverseitig über das Compose-Netzwerk
-(`http://idp:8080`).
+erreichbar (für den `/authorize`-Redirect im Browser); Token-Aufrufe laufen
+serverseitig über das Compose-Netzwerk (`http://idp:8080`), Introspection
+über den dedizierten Port (`http://idp:8081`).
 
 Login: Benutzer `admin`, Passwort `admin` (siehe `idp-config.yaml`).
 
@@ -166,12 +174,12 @@ Gateway-Upstreams konfigurieren (komma-separiert, optional `/strip`):
 In vier Terminals:
 
 ```bash
-# 1) IdP (OAuth2-Provider, :8090)
-(cd idp && IDP_CONFIG=../idp-config.yaml IDP_ADDR=:8090 go run ./cmd/idp)
+# 1) IdP (OAuth2-Provider, :8090; Introspection zusätzlich auf :8091)
+(cd idp && IDP_CONFIG=../idp-config.yaml IDP_ADDR=:8090 IDP_INTROSPECT_ADDR=:8091 go run ./cmd/idp)
 
 # 2) Backend-Service (:8081, validiert Token über den IdP)
 (cd service && JANSVCA_DATA_DIR=./data JANSVCA_ADDR=:8081 \
-   JANSVCA_OAUTH2_INTROSPECTION_URL=http://localhost:8090/introspect \
+   JANSVCA_OAUTH2_INTROSPECTION_URL=http://localhost:8091/introspect \
    JANSVCA_OAUTH2_CLIENT_ID=jansvca-app JANSVCA_OAUTH2_CLIENT_SECRET=jansvca-app-secret \
    go run ./cmd/jansvca)
 
@@ -180,7 +188,7 @@ In vier Terminals:
    JANSVCA_SPA_DIR=./dist \
    JANSVCA_OAUTH2_AUTHORIZATION_URL=http://localhost:8090/authorize \
    JANSVCA_OAUTH2_TOKEN_URL=http://localhost:8090/token \
-   JANSVCA_OAUTH2_INTROSPECTION_URL=http://localhost:8090/introspect \
+   JANSVCA_OAUTH2_INTROSPECTION_URL=http://localhost:8091/introspect \
    JANSVCA_OAUTH2_CLIENT_ID=jansvca-app JANSVCA_OAUTH2_CLIENT_SECRET=jansvca-app-secret \
    JANSVCA_OAUTH2_REDIRECT_URL=http://localhost:8080/api/auth/callback \
    go run ./cmd/jansvca-app)

@@ -2,8 +2,11 @@
 //
 //	GET/POST /authorize  – authorization-code flow with a built-in login form
 //	POST      /token      – code exchange (grant_type=authorization_code)
-//	POST      /introspect – RFC 7662 token introspection
+//	POST      /revoke     – RFC 7009 token revocation
 //
+// Introspection (RFC 7662) is served separately via IntrospectionHandler so
+// it can run on a dedicated port (IDP_INTROSPECT_ADDR), typically behind a
+// TLS/mTLS-terminating listener.
 // The IdP is intentionally minimal: a single client, users from a YAML file,
 // in-memory code/token store. It is meant for local development of the BFF.
 package server
@@ -112,13 +115,36 @@ func (s *Server) Close() {
 	close(s.stop)
 }
 
-// Handler returns the mux serving all IdP endpoints.
+// Handler returns the mux serving the browser- and client-facing IdP
+// endpoints (/authorize, /token, /revoke) for the main port when
+// introspection runs on its own dedicated listener (IDP_INTROSPECT_ADDR).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/authorize", s.handleAuthorize)
 	mux.HandleFunc("/token", s.handleToken)
-	mux.HandleFunc("/introspect", s.handleIntrospect)
 	mux.HandleFunc("/revoke", s.handleRevoke)
+	return mux
+}
+
+// FullHandler returns the mux serving all IdP endpoints including
+// introspection. It is used for the main port when no dedicated
+// introspection address is configured (local dev fallback).
+func (s *Server) FullHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/authorize", s.handleAuthorize)
+	mux.HandleFunc("/token", s.handleToken)
+	mux.HandleFunc("/revoke", s.handleRevoke)
+	mux.HandleFunc("/introspect", s.handleIntrospect)
+	return mux
+}
+
+// IntrospectionHandler returns the mux serving only the RFC 7662
+// introspection endpoint. Serve it on a separate port
+// (IDP_INTROSPECT_ADDR), typically behind a TLS/mTLS-terminating listener;
+// clients configured with require_mtls are rejected on plain connections.
+func (s *Server) IntrospectionHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/introspect", s.handleIntrospect)
 	return mux
 }
 
@@ -376,6 +402,14 @@ func (s *Server) handleIntrospect(w http.ResponseWriter, r *http.Request) {
 	client, ok := s.store.Client(clientID)
 	if !ok || (client.Secret != "" && client.Secret != clientSecret) {
 		writeJSON(w, http.StatusOK, map[string]any{"active": false})
+		return
+	}
+	if client.RequireMTLS && r.TLS == nil {
+		// The client is configured with require_mtls: introspection is only
+		// accepted over a TLS connection (the dedicated introspection port
+		// behind a mTLS-terminating listener). Plain-HTTP requests are
+		// rejected without revealing any token state.
+		tokenError(w, http.StatusUnauthorized, "invalid_client")
 		return
 	}
 	tok := r.FormValue("token")

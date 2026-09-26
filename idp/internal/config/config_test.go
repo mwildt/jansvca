@@ -98,3 +98,29 @@ users: []
 		t.Fatalf("expected 1 client id, got %v", store.Clients())
 	}
 }
+func TestClientRequireMTLS(t *testing.T) {
+	p := writeConfig(t, `clients:
+  - id: plain
+    secret: s1
+    redirect_uris:
+      - http://localhost:8080/cb
+  - id: strict
+    secret: s2
+    require_mtls: true
+    redirect_uris:
+      - http://localhost:8080/cb
+users: []
+`)
+	store, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	c, ok := store.Client("strict")
+	if !ok || !c.RequireMTLS {
+		t.Fatalf("client strict should have RequireMTLS, got %+v", c)
+	}
+	c, ok = store.Client("plain")
+	if !ok || c.RequireMTLS {
+		t.Fatalf("client plain should not have RequireMTLS, got %+v", c)
+	}
+}
