@@ -194,11 +194,23 @@ jobs:
       - name: Smoke test (idp serves the authorize login form)
         run: |
           IDP="ghcr.io/${{ github.repository_owner }}/jansvca-idp:sha-$(git rev-parse --short HEAD)"
-          docker run --rm -d --name idp-smoke -p 18090:8080 "$IDP"
+          docker run --rm -d --name idp-smoke \
+            -p 18090:8080 -p 18091:8081 -e IDP_INTROSPECT_ADDR=:8081 "$IDP"
           sleep 3
           docker logs idp-smoke
           curl -fsS "http://127.0.0.1:18090/authorize?response_type=code&client_id=jansvca-app&redirect_uri=http://localhost:8080/api/auth/callback&state=x" \
             | grep -q "Anmeldung" || docker logs idp-smoke
+          # Introspection must be served on the dedicated port ...
+          status=$(curl -s -o /tmp/introspect-body.json -w "%{http_code}" \
+            -u jansvca-app:jansvca-app-secret -d "token=x" \
+            http://127.0.0.1:18091/introspect)
+          [ "$status" = "200" ] || { echo "introspect on dedicated port: $status"; cat /tmp/introspect-body.json; docker logs idp-smoke; exit 1; }
+          grep -q '"active":false' /tmp/introspect-body.json || { cat /tmp/introspect-body.json; exit 1; }
+          # ... and no longer on the main port.
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -u jansvca-app:jansvca-app-secret -d "token=x" \
+            http://127.0.0.1:18090/introspect)
+          [ "$status" = "404" ] || { echo "introspect on main port: $status"; docker logs idp-smoke; exit 1; }
           docker stop idp-smoke
 
       - name: Smoke test (app serves SPA and proxies /api to service)

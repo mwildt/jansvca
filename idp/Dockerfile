@@ -18,8 +18,11 @@ RUN apk add --no-cache ca-certificates && adduser -D -u 10001 idp
 COPY --from=builder /out/jansvca-idp /usr/local/bin/jansvca-idp
 COPY idp-config.yaml /etc/jansvca/idp-config.yaml
 
+# IDP_INTROSPECT_ADDR serves only /introspect on a dedicated port (empty =
+# introspection stays on the main port). Typically terminated by a
+# TLS/mTLS proxy in front of this container.
 ENV IDP_ADDR=:8080 \
     IDP_CONFIG=/etc/jansvca/idp-config.yaml
-EXPOSE 8080
+EXPOSE 8080 8081
 USER idp
 ENTRYPOINT ["/usr/local/bin/jansvca-idp"]

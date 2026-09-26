@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -92,8 +93,15 @@ func loginCode(t *testing.T, h http.Handler, query, username, password string) s
 	return getQuery(t, rec.Header().Get("Location"), "code")
 }
 
-func TestAuthorizeRendersLoginForm(t *testing.T) {
+func newTestServer(t *testing.T) *Server {
+	t.Helper()
 	srv := New(newTestStore(t))
+	t.Cleanup(func() { srv.Close() })
+	return srv
+}
+
+func TestAuthorizeRendersLoginForm(t *testing.T) {
+	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet,
 		"/authorize?response_type=code&client_id=app&redirect_uri=http://localhost:8080/api/auth/callback&state=xyz", nil)
@@ -108,7 +116,7 @@ func TestAuthorizeRendersLoginForm(t *testing.T) {
 }
 
 func TestAuthorizeInvalidClient(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet,
 		"/authorize?response_type=code&client_id=nope&redirect_uri=http://localhost:8080/api/auth/callback", nil)
@@ -119,7 +127,7 @@ func TestAuthorizeInvalidClient(t *testing.T) {
 }
 
 func TestAuthorizeBadRedirectURI(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet,
 		"/authorize?response_type=code&client_id=app&redirect_uri=http://evil.example/cb", nil)
@@ -130,8 +138,8 @@ func TestAuthorizeBadRedirectURI(t *testing.T) {
 }
 
 func TestFullCodeFlow(t *testing.T) {
-	srv := New(newTestStore(t))
-	h := srv.Handler()
+	srv := newTestServer(t)
+	h := srv.FullHandler()
 
 	// 1) Login via the browser dance (GET form + CSRF, then POST) -> redirect with code.
 	rec := login(t, h, testAuthorizeQuery+"&state=xyz&scope=openid", "admin", "admin")
@@ -214,7 +222,7 @@ func TestFullCodeFlow(t *testing.T) {
 }
 
 func TestTokenInvalidClient(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", "whatever")
@@ -229,14 +237,14 @@ func TestTokenInvalidClient(t *testing.T) {
 }
 
 func TestIntrospectUnknownToken(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	form := url.Values{}
 	form.Set("token", "unknown")
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth("app", "s3cret")
-	srv.Handler().ServeHTTP(rec, req)
+	srv.FullHandler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
@@ -247,7 +255,7 @@ func TestIntrospectUnknownToken(t *testing.T) {
 
 func TestTokenFormClientAuth(t *testing.T) {
 	// client_id/client_secret in form body (no Basic auth) must also work.
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	h := srv.Handler()
 
 	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
@@ -268,7 +276,7 @@ func TestTokenFormClientAuth(t *testing.T) {
 }
 
 func TestAuthorizeSetsLastUserCookie(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	h := srv.Handler()
 
 	rec := login(t, h, testAuthorizeQuery+"&state=xyz", "admin", "admin")
@@ -295,7 +303,7 @@ func TestAuthorizeSetsLastUserCookie(t *testing.T) {
 }
 
 func TestAuthorizePrefillsUsernameFromCookie(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	h := srv.Handler()
 
 	rec := httptest.NewRecorder()
@@ -313,7 +321,7 @@ func TestAuthorizePrefillsUsernameFromCookie(t *testing.T) {
 }
 
 func TestAuthorizeNoCookieDoesNotPrefill(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	h := srv.Handler()
 
 	rec := httptest.NewRecorder()
@@ -327,7 +335,7 @@ func TestAuthorizeNoCookieDoesNotPrefill(t *testing.T) {
 }
 
 func TestPKCECodeFlow(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	h := srv.Handler()
 
 	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
@@ -377,7 +385,7 @@ func TestPKCECodeFlow(t *testing.T) {
 }
 
 func TestRefreshGrant(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	h := srv.Handler()
 
 	// obtain a token via code flow.
@@ -437,8 +445,8 @@ func TestRefreshGrant(t *testing.T) {
 }
 
 func TestRevokeEndpoint(t *testing.T) {
-	srv := New(newTestStore(t))
-	h := srv.Handler()
+	srv := newTestServer(t)
+	h := srv.FullHandler()
 
 	// obtain an access token via code flow.
 	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
@@ -504,7 +512,7 @@ func TestRevokeEndpoint(t *testing.T) {
 }
 
 func TestAuthorizeWithoutCSRFTokenRejected(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	h := srv.Handler()
 
 	// Prime the CSRF cookie via GET, then POST credentials without the token.
@@ -544,7 +552,7 @@ func TestAuthorizeWithoutCSRFTokenRejected(t *testing.T) {
 }
 
 func TestAuthorizeWrongCSRFTokenRejected(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	h := srv.Handler()
 
 	rec := httptest.NewRecorder()
@@ -580,7 +588,7 @@ func TestAuthorizeWrongCSRFTokenRejected(t *testing.T) {
 }
 
 func TestAuthorizeSetsSecurityHeaders(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	h := srv.Handler()
 
 	rec := httptest.NewRecorder()
@@ -606,7 +614,7 @@ func TestAuthorizeSetsSecurityHeaders(t *testing.T) {
 }
 
 func TestCSRFCookieIsHttpOnlySessionScoped(t *testing.T) {
-	srv := New(newTestStore(t))
+	srv := newTestServer(t)
 	h := srv.Handler()
 
 	rec := httptest.NewRecorder()
@@ -635,9 +643,8 @@ func TestCSRFCookieIsHttpOnlySessionScoped(t *testing.T) {
 }
 
 func TestIntrospectRequiresClientAuth(t *testing.T) {
-	srv := New(newTestStore(t))
-	defer srv.Close()
-	h := srv.Handler()
+	srv := newTestServer(t)
+	h := srv.FullHandler()
 
 	// Obtain a valid access token via code flow.
 	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
@@ -684,8 +691,7 @@ func TestIntrospectRequiresClientAuth(t *testing.T) {
 }
 
 func TestRefreshGrantClientBinding(t *testing.T) {
-	srv := New(newTestStore(t))
-	defer srv.Close()
+	srv := newTestServer(t)
 	h := srv.Handler()
 
 	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
@@ -728,9 +734,8 @@ func TestRefreshGrantClientBinding(t *testing.T) {
 }
 
 func TestRevokeClientBinding(t *testing.T) {
-	srv := New(newTestStore(t))
-	defer srv.Close()
-	h := srv.Handler()
+	srv := newTestServer(t)
+	h := srv.FullHandler()
 
 	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
 	form := url.Values{}
@@ -784,4 +789,109 @@ func getQuery(t *testing.T, raw, key string) string {
 		t.Fatalf("missing %q in %q", key, raw)
 	}
 	return v
+}
+
+func TestIntrospectionRunsOnDedicatedHandlerOnly(t *testing.T) {
+	srv := newTestServer(t)
+
+	// The main handler (dedicated introspection port configured) must not
+	// serve introspection anymore: 404 instead of a token decision.
+	form := url.Values{}
+	form.Set("token", "unknown")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "s3cret")
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("introspect must be absent from the main handler, got %d", rec.Code)
+	}
+
+	// The introspection handler answers as usual.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "s3cret")
+	srv.IntrospectionHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("introspection handler: %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"active":false`) {
+		t.Fatalf("expected inactive: %s", rec.Body.String())
+	}
+
+	// The introspection handler serves nothing else.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/authorize?"+testAuthorizeQuery, nil)
+	srv.IntrospectionHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("authorize must be absent from the introspection handler, got %d", rec.Code)
+	}
+}
+
+func newMTLSTestStore(t *testing.T) *config.Store {
+	t.Helper()
+	s, err := config.LoadString(`clients:
+  - id: app
+    secret: s3cret
+    redirect_uris:
+      - http://localhost:8080/api/auth/callback
+  - id: strict
+    secret: s3cret
+    require_mtls: true
+    redirect_uris:
+      - http://localhost:8080/api/auth/callback
+users:
+  - subject: admin
+    name: Administrator
+    password: admin
+`)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	return s
+}
+
+func TestIntrospectRequiresMTLSWhenConfigured(t *testing.T) {
+	srv := New(newMTLSTestStore(t))
+	defer srv.Close()
+	h := srv.IntrospectionHandler()
+
+	form := url.Values{}
+	form.Set("token", "unknown")
+
+	// Plain-HTTP request for a require_mtls client: rejected with 401
+	// invalid_client, without revealing token state.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("strict", "s3cret")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without TLS for require_mtls client, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "invalid_client") {
+		t.Fatalf("expected invalid_client: %s", rec.Body.String())
+	}
+
+	// Over TLS the same request is answered.
+	tlsReq := httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	tlsReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	tlsReq.SetBasicAuth("strict", "s3cret")
+	tlsReq.TLS = &tls.ConnectionState{}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, tlsReq)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 over TLS for require_mtls client, got %d", rec.Code)
+	}
+
+	// A client without require_mtls is unaffected by the TLS check.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth("app", "s3cret")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for plain client, got %d", rec.Code)
+	}
 }

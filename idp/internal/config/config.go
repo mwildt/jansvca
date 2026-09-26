@@ -41,6 +41,11 @@ type Client struct {
 	ID           string   `yaml:"id"`
 	Secret       string   `yaml:"secret"`
 	RedirectURIs []string `yaml:"redirect_uris"`
+	// RequireMTLS marks a client whose server-to-server calls (introspection)
+	// must arrive over a TLS connection, i.e. through the dedicated
+	// introspection port behind a mTLS-terminating listener. Requests for
+	// such a client without TLS are rejected.
+	RequireMTLS bool `yaml:"require_mtls"`
 }
 
 // Store holds the loaded config and indexes for fast lookup.
