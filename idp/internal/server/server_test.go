@@ -735,7 +735,7 @@ func TestRefreshGrantClientBinding(t *testing.T) {
 
 func TestRevokeClientBinding(t *testing.T) {
 	srv := newTestServer(t)
-	h := srv.Handler()
+	h := srv.FullHandler()
 
 	code := loginCode(t, h, testAuthorizeQuery, "admin", "admin")
 	form := url.Values{}
